@@ -26,3 +26,28 @@ git clone https://github.com/yourusername/APICE-Py.git
 cd APICE-Py
 ```
 
+### 2. Install Dependencies
+
+Install required packages from `requirements.txt`:
+
+```bash
+pip install -r requirements.txt
+```
+**Note**: Requires Python >= 3.12
+
+## 📁 Project Structure
+
+```bash
+APICE-Py/
+├── main_cli.py # CLI version: accepts arguments
+├── main_config.py # Manual config version: edit params in code
+├── preprocessing/ # Core EEG processing modules
+│ ├── filtering.py
+│ ├── epoching.py
+│ └── ...
+├── data/ # EEG input data (optional)
+├── outputs/ # Processed data and logs (optional)
+├── requirements.txt # Dependencies list
+└── README.md # Project info
+```
+
