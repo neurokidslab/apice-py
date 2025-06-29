@@ -69,7 +69,7 @@ APICE-Py/
 Use `main_terminal.py` to preprocess EEG data via command-line arguments:
 
 ```bash
-python main_termonal.py \
+python main_terminal.py \
   --input "input" \
   --output "output" \
   --selection_method 1\
