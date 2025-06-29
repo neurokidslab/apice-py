@@ -37,7 +37,7 @@ pip install -r requirements.txt
 
 ### Sample Data
 
-For sample input raw data, use the [sample files](examples/example_original/DATA/set).
+For sample input raw data, use the [sample files](https://github.com/neurokidslab/eeg_preprocessing/tree/main/examples/example_original/DATA/set).
 
 ---
 ## 📁 Project Structure
@@ -98,7 +98,7 @@ Contributions are welcome! Feel free to:
 
 ---
 ## 📜 License
-This project is licensed under the Apache-2.0 license. See `LICENS`for details.
+This project is licensed under the Apache-2.0 license. See `LICENSE`for details.
 
 ---
 ## ✨ Acknowledgements
