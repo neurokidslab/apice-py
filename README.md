@@ -35,7 +35,8 @@ pip install -r requirements.txt
 ```
 **Note**: Requires Python >= 3.12
 
-### Sample Data
+---
+## 📂 Sample Data
 
 For sample input raw data, use the [sample files](https://github.com/neurokidslab/eeg_preprocessing/tree/main/examples/example_original/DATA/set).
 
