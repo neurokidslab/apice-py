@@ -73,7 +73,7 @@ python main_terminal.py \
   --input "input" \
   --output "output" \
   --selection_method 1\
-  --monateg "electrode_layout/montage_file \
+  --montage "electrode_layout/montage_file \
   --event_keys_for_segmentation Event1, Event2, Event3 \
   --event_tile_window -1.6, 2.0 \
   --baseline_tile_window -1.6, 0
