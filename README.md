@@ -35,6 +35,7 @@ pip install -r requirements.txt
 ```
 **Note**: Requires Python >= 3.12
 
+---
 ## 📁 Project Structure
 
 ```bash
@@ -55,3 +56,42 @@ APICE-Py/
 └── README.md # Project info
 ```
 
+---
+## 🛠️ Usage
+
+### Option 1: Command-Line Interface
+
+Use `main_terminal.py` to preprocess EEG data via command-line arguments:
+
+```bash
+python main_termonal.py \
+  --input "input" \
+  --output "output" \
+  --selection_method 1\
+  --monateg "electrode_layout/montage_file \
+  --event_keys_for_segmentation Event1, Event2, Event3 \
+  --event_tile_window -1.6, 2.0 \
+  --baseline_tile_window -1.6, 0
+```
+### Option 2: Manual Configuration
+
+Edit parameters directly in `main_config.py` and run:
+```bash
+python main_config.py
+```
+
+---
+## 📖 Documentation
+
+Full documentation (examples, customization guide, module structure) is coming soon.
+
+---
+## 🤝 Contributing
+Contributions are welcome! Feel free to:
+
+- Open an issue to report bugs or request features
+- Suggest ideas for pipeline extensions
+
+---
+## 📜 License
+This project is licensed under the MIT License. See LICENSE for details.
