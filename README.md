@@ -94,5 +94,10 @@ Contributions are welcome! Feel free to:
 
 ---
 ## 📜 License
-This project is licensed under the Apache-2.0 license. See [LICENSE](https://github.com/neurokidslab/apice-py/tree/main?tab=Apache-2.0-1-ov-file#) for details.
+This project is licensed under the Apache-2.0 license. See `LICENS`for details.
+
+---
+## ✨ Acknowledgements
+- Built with MNE-Python, an open-source EEG/MEG analysis package
+- Inspired by best practices in open neuroscience workflows
 
