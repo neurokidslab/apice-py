@@ -39,14 +39,18 @@ pip install -r requirements.txt
 
 ```bash
 APICE-Py/
-├── main_cli.py # CLI version: accepts arguments
+├── main_terminal.py # CLI version: accepts arguments
 ├── main_config.py # Manual config version: edit params in code
 ├── preprocessing/ # Core EEG processing modules
-│ ├── filtering.py
-│ ├── epoching.py
+│ ├── argparser_main.py
+│ ├── artifacts_correction.py
 │ └── ...
-├── data/ # EEG input data (optional)
-├── outputs/ # Processed data and logs (optional)
+├── data/ # EEG input data
+├── output/ # Processed data and logs
+│ ├── artifacts.py
+│ ├── epochs.py
+│ └── ...
+├── electrode_layout/ # montage (optional)
 ├── requirements.txt # Dependencies list
 └── README.md # Project info
 ```
