@@ -5,7 +5,7 @@ import numpy as np
 from prettytable import PrettyTable
 
 import apice.artifacts_correction 
-from apice.artifacts_structure import annotate_bads, set_reference, Artifacts, annotations_to_rejection_matrix
+from apice.artifacts_structure import annotate_bads, set_reference, Artifacts, annotations_to_rejection_matrix, plot_percentage_of_bad_data_across_sensors
 import apice.parameters
 import apice.segmentation
 import apice.artifacts_rejection
@@ -197,10 +197,14 @@ def run(input_dir, output_dir,
         df_preprocessing_summary = get_summary(subject_no, subject_name, raw, df_preprocessing_summary, option='preprocessing')
 
         # Create a figure to visualize the artifact structure
-        fig = DefineBTBC.plot_artifact_structure(raw, color_scheme='viridis')
+        fig = DefineBTBC.plot_artifact_structure(raw, color_scheme='jet')
         
         # Add artifacts to reports
         report.add_figure(fig, "Artifacts Matrix", section="Raw Data", replace=True)
+
+        # Add topomap of bad electrodes
+        fig = plot_percentage_of_bad_data_across_sensors(raw)
+        report.add_figure(fig, "Bad data across electrodes", section="Raw Data", replace=True)
         
         # ARTIFACT CORRECTION
         correct_artifacts(raw, n_jobs)
@@ -226,10 +230,14 @@ def run(input_dir, output_dir,
         annotate_bads(raw, channels=True, times=True, data=True, corrected=True)
         
         # Create a figure to visualize the artifact structure
-        fig = DefineBTBC.plot_artifact_structure(raw, color_scheme='viridis')
+        fig = DefineBTBC.plot_artifact_structure(raw, color_scheme='jet')
         
         # Add artifacts to reports
         report.add_figure(fig, "Artifacts Matrix", section="Preprocessed Raw Data", replace=True)
+
+        # Add topomap of bad electrodes
+        fig = plot_percentage_of_bad_data_across_sensors(raw)
+        report.add_figure(fig, "Bad data across electrodes", section="Preprocessed Raw Data", replace=True)
 
         # SEGMENTATION ----------------------------------------------------------------------------------------------
         if event_keys_for_segmentation:
@@ -244,27 +252,29 @@ def run(input_dir, output_dir,
             report.add_epochs(epochs, "Epochs", psd=True, replace=True)
             
             # Add epochs artifacts matrix
-            fig = DefineBTBC.plot_artifact_structure(epochs, color_scheme='viridis')
+            fig = DefineBTBC.plot_artifact_structure(epochs, color_scheme='jet')
             report.add_figure(fig, "Artifacts Matrix", section="Epochs", replace=True)
 
-
+            # Add topomap of bad electrodes
+            fig = plot_percentage_of_bad_data_across_sensors(epochs)
+            report.add_figure(fig, "Bad data across electrodes", section="Epochs", replace=True)
 
         # EXPORT DATA -----------------------------------------------------------------------------------------------
         if save_preprocessed_raw:
             file_name = subject_name.split(sep='.')[0]
-            if file_name.endswith('_raw'):
-                file_name = file_name.replace('_raw', '_prp')
+            if file_name.endswith('-raw'):
+                file_name = file_name.replace('-raw', '-prp')
             else:
-                file_name = file_name+'_prp'
+                file_name = file_name+'-prp'
             file_name = file_name+'.fif'
             Raw.export_raw(raw, file_name, output_path=os.path.join(output_dir, 'preprocessed_raw'))
 
         if save_segmented_data and event_keys_for_segmentation:
             file_name = subject_name.split(sep='.')[0]
-            if file_name.endswith('_raw'):
-                file_name = file_name.replace('_raw', '_epo')
+            if file_name.endswith('-raw'):
+                file_name = file_name.replace('-raw', '-epo')
             else:
-                file_name = file_name+'_epo'
+                file_name = file_name+'-epo'
             file_name = file_name+'.fif'
             
             # Export epochs
@@ -275,10 +285,10 @@ def run(input_dir, output_dir,
             
             # Set file name
             file_name = subject_name.split(sep='.')[0]
-            if file_name.endswith('_raw'):
-                file_name = file_name.replace('_raw', '_erp')
+            if file_name.endswith('-raw'):
+                file_name = file_name.replace('-raw', '-erp')
             else:
-                file_name = file_name+'_erp'
+                file_name = file_name+'-erp'
                     
             if not by_event_type:
                 file_name = file_name+'.fif'
@@ -433,7 +443,7 @@ def correct_artifacts(raw, n_jobs):
     DefineBTBC(raw, keep_rejected_previous=True, config=True)
 
 
-def segment_data(raw, event_keys, tmin, tmax, n_jobs, baseline_time_window=None, by_event_type=True):
+def segment_data(raw, event_keys, tmin, tmax, n_jobs=-1, baseline_time_window=None, by_event_type=True):
     """
     Segments continuous EEG data, applies artifact correction, and computes evoked responses.
 
