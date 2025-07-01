@@ -516,6 +516,34 @@ def annotations_to_rejection_matrix(raw) -> None:
         for el, start, end in zip(channel_indices, onset_indices, end_indices):
             raw.artifacts.CCT[ep, el, start:end] = True 
 
+def plot_percentage_of_bad_data_across_sensors(raw):
+    # Get the percentage of bad data per electrodes
+    data = []
+    for i, ch in enumerate(raw.ch_names):
+        n_bads = np.sum(raw.artifacts.BCT[:, i, :])
+        n_per = (n_bads / np.shape(raw.artifacts.BCT[:, i, :])[1]) * 100
+        data.append(n_per)
+    
+    # Create a figure explicitly
+    fig, ax = plt.subplots()
+    
+    # Plot the topomap
+    im, _ = mne.viz.plot_topomap(data, raw.info, 
+                        ch_type='eeg', 
+                        names=raw.ch_names, 
+                        size=4, 
+                        cmap='viridis',
+                        axes=ax,
+                        show=False)
+
+    # Add a colorbar
+    cbar = plt.colorbar(im, ax=ax)
+    cbar.set_label('Percentage of bad data (%)')  # More descriptive label
+
+    # Return the figure instead of the image
+    return fig
+
+
 # %% CLASSES
 
 class Artifacts:
