@@ -387,7 +387,7 @@ def detect_artifacts(raw):
     DefineBTBC(raw, config=True)
 
 
-def correct_artifacts(raw, n_jobs):
+def correct_artifacts(raw, n_jobs=-1):
     """
     Corrects artifacts in EEG data using a series of processing steps.
 
@@ -583,4 +583,5 @@ def get_summary(subject_no, subject_name, raw, df_summary, option='preprocessing
                                             length, corrected_data, bad_data, bad_channels, bad_times, bad_epochs]
     
     return df_summary
+
 
