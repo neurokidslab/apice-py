@@ -61,8 +61,8 @@ APICE-Py/
 │ └── ...
 ├── data/ # EEG input data
 ├── output/ # Processed data and logs
-│ ├── artifacts.py
-│ ├── epochs.py
+│ ├── artifacts
+│ ├── epochs
 │ └── ...
 ├── electrode_layout/ # montage (optional)
 ├── requirements.txt # Dependencies list
