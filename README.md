@@ -99,6 +99,29 @@ python main_config.py
 Click [here](https://zenodo.org/records/17151631) fo the documentation (examples, customization guide, pipeline structure).
 
 ---
+## 📖 Citation
+
+If you use this repository in your research, please cite:
+
+```bibtex
+@software{lorenzo_2025_17151631,
+  author       = {Lorenzo, Jhunlyn and
+                  Formento Moletta, Nicolò and
+                  Fló, Ana and
+                  Dehaene-Lambertz, Ghislaine},
+  title        = {APICE-Py: An Open-Source MNE-Python Pipeline for
+                   Scalable EEG Preprocessing
+                  },
+  month        = sep,
+  year         = 2025,
+  publisher    = {Zenodo},
+  version      = {0.1.0},
+  doi          = {10.5281/zenodo.17151631},
+  url          = {https://github.com/neurokidslab/apice-py},
+}
+```
+
+---
 ## 🤝 Contributing
 Contributions are welcome! Feel free to:
 
