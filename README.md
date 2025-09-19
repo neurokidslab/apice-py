@@ -96,7 +96,7 @@ python main_config.py
 ---
 ## 📖 Documentation
 
-Full documentation (examples, customization guide, module structure) is coming soon.
+Click [here](https://zenodo.org/records/17151631) fo the documentation (examples, customization guide, pipeline structure).
 
 ---
 ## 🤝 Contributing
