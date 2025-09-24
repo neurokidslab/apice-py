@@ -104,7 +104,7 @@ Click [here](https://zenodo.org/records/17151631) fo the documentation (examples
 If you use this repository in your research, please cite:
 
 ```bibtex
-@software{lorenzo_2025_17151631,
+@misc{lorenzo_2025_17151631,
   author       = {Lorenzo, Jhunlyn and
                   Formento Moletta, Nicolò and
                   Fló, Ana and
@@ -120,6 +120,7 @@ If you use this repository in your research, please cite:
   url          = {https://github.com/neurokidslab/apice-py},
 }
 ```
+
 
 ---
 ## 🤝 Contributing
