@@ -117,7 +117,7 @@ If you use this repository in your research, please cite:
   publisher    = {Zenodo},
   version      = {0.1.0},
   doi          = {10.5281/zenodo.17151631},
-  url          = {https://github.com/neurokidslab/apice-py},
+  url          = {https://doi.org/10.5281/zenodo.17151631},
 }
 ```
 
