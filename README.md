@@ -31,7 +31,7 @@ APICE-Py is a modular and scalable EEG preprocessing pipeline built on top of [M
 
 ```bash
 git clone https://github.com/neurokidslab/apice-py.git
-cd APICE-Py
+cd apice-py
 ```
 
 ### 2. Install Dependencies
