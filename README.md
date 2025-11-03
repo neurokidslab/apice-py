@@ -2,7 +2,7 @@
 
 ## Authors
 - **Jhunlyn Lorenzo**
-- **Nicolò Formento Molleta**
+- **Nicolò Formento Moletta**
 - **Ana Flò**
 - **Ghislaine Dehaene-Lambertz**
 
