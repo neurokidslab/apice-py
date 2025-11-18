@@ -863,7 +863,7 @@ class Power:
                 # Compute the interquartile range (IQR)
                 IQR = percentiles[2] - percentiles[0]
                 # Determine lower and upper thresholds based on IQR
-                lower_threshold = percentiles[0] + thresh[iband][0] * IQR
+                lower_threshold = percentiles[0] - thresh[iband][0] * IQR
                 upper_threshold = percentiles[2] + thresh[iband][1] * IQR
             else:
                 # Use fixed thresholds if not using relative thresholds
@@ -2837,4 +2837,5 @@ class FastChange:
         BCT = self.reject_data_around_change_detected(raw, self.params, data_to_reject)
         
         return BCT
+
 
