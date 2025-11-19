@@ -157,8 +157,10 @@ class Raw:
         # Import raw
         try:
             ext = os.path.splitext(data_name)[-1].lower()
-            if ext == '.raw':
+            if ext == '.raw' or ext == '.mff':
                 raw = read_raw_egi(data_name, preload=False, verbose=False)
+            elif ext == '.edf':
+                raw = read_raw_edf(data_name, preload=False, verbose=False)
             else:
                 raw = read_raw(data_name, preload=False, verbose=False)
         
@@ -167,7 +169,7 @@ class Raw:
                 Raw.stim_channels_to_annotations(raw)
                 
                 # Remove STIM channels
-                raw.pick(meg=False, eeg=True, stim=False)
+                raw.pick('eeg')
                 
             # Drop VREF
             if "VREF" in raw.ch_names:
@@ -350,7 +352,7 @@ class Raw:
         # Convert stim channels to annotations
         print("\nConverting STIMs to annotations...")
         
-        stims = raw.copy().pick(meg=False, eeg=False, stim=True)
+        stims = raw.copy().pick('stim')
         
         if stims:
 
@@ -433,7 +435,7 @@ class Raw:
     def get_stim_duration(raw):
 
         # Load data from the specified stimulus channel
-        stim_data = raw.copy().pick(meg=False, eeg=False, stim=True).get_data()
+        stim_data = raw.copy().pick('stim').get_data()
         
         above_baseline = np.where(stim_data > 0.01, 1, 0)
         diff = np.diff(above_baseline, prepend=0)
@@ -517,4 +519,5 @@ def export_epoch(epochs, file_name, output_dir):
         print(f"Writing {full_path}")
         epochs.save(full_path, overwrite=True)
         print(f"Closing {full_path}")
+
         print('[done]')
