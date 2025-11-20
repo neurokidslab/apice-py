@@ -148,7 +148,7 @@ class Raw:
         Returns:
             - mne.io.Raw: The raw EEG data.
         """
-        from mne.io import read_raw, read_raw_egi
+        from mne.io import read_raw, read_raw_egi, read_raw_edf
         
         print_header("IMPORTING RAW DATA")
 
@@ -521,3 +521,4 @@ def export_epoch(epochs, file_name, output_dir):
         print(f"Closing {full_path}")
 
         print('[done]')
+
