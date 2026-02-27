@@ -1,6 +1,8 @@
 # %% LIBRARIES
 # Importing necessary libraries for EEG data processing
 import numpy as np
+from scipy import interpolate
+
 import apice
 from apice.artifacts_structure import Artifacts, set_reference, compute_z_score
 from apice.io import Raw
@@ -15,6 +17,68 @@ warnings.simplefilter("ignore", category=RuntimeWarning)
 
 
 # %% FUNCTIONS
+
+
+def maxchange(raw, time_window, time_window_step):
+    
+    n_electrodes, n_samples, n_epochs = Raw.get_data_size(raw)
+    
+    # find the time windows
+    if time_window and time_window<(n_samples/raw.info['sfreq']):
+        _, i_t, _ = define_time_window(raw, time_window,time_window_step)
+        # time verctor for the half of the time window
+        time_tw = (i_t[0,:] + time_window/2)/raw.info['sfreq'] + raw.times[0]
+        n_tw = np.shape(i_t)[1]
+    else:
+        i_t = np.arange(0,n_samples)
+        n_tw = 1
+    
+    # get the data
+    eeg_data = raw._data.copy()  
+    if len(np.shape(raw._data))==2:
+        eeg_data = np.reshape(eeg_data, (n_epochs, n_electrodes, n_samples))
+
+    # comput max-min difference in time windows
+    maxmindiff_tw = np.empty((n_epochs, n_electrodes, n_tw))
+    maxmindiff_tw[:] = np.nan
+    for ep in np.arange(n_epochs):
+        for el in np.arange(n_electrodes):
+            data = eeg_data[ep, el, :]
+            data_time_window = data[i_t]
+            maxmindiff_tw[ep, el, :] = np.max(data_time_window, axis=0) - np.min(data_time_window, axis=0)
+                
+    # interpolate to have it in the data size
+    if time_window and time_window<(n_samples/raw.info['sfreq']):
+        maxmindiff = interpolate_tw(raw, maxmindiff_tw, time_tw)
+    else:
+        maxmindiff = np.tile(maxmindiff_tw, (1,1,n_samples))
+         
+    # reshape
+    if len(np.shape(raw._data))==2:
+        maxmindiff = np.squeeze(np.transpose(maxmindiff,(1,2,0)), axis=2)
+               
+    return maxmindiff
+
+
+def interpolate_tw(raw, data_tw, time_tw):
+    n_electrodes, n_samples, n_epochs = Raw.get_data_size(raw)
+    
+    data = np.empty((n_epochs, n_electrodes, n_samples))
+    data[:]= np.nan
+    idx_t = np.logical_and(raw.times>=time_tw[0], raw.times<=time_tw[-1])
+    idx_ini = raw.times<time_tw[0] 
+    idx_end = raw.times>time_tw[-1]
+    for ep in np.arange(n_epochs):
+        for el in np.arange(n_electrodes):
+            d = data_tw[ep, el, :].flatten()
+            f = interpolate.interp1d(time_tw, d, kind='linear')
+            dnew = f(raw.times[idx_t])
+            data[ep,el,idx_t] = dnew
+            data[ep,el,idx_ini] = dnew[0]
+            data[ep,el,idx_end] = dnew[-1]
+ 
+    return data
+
 
 def insert_initial_and_final_samples(t_initial, t_final):
     """
@@ -1104,6 +1168,302 @@ class Power:
                                                     i_t, 
                                                     freq_band)
         return BCT
+
+
+class FlatChannel:
+    """
+    A class for processing EEG data with an emphasis on artifact rejection based on flat activity.
+
+    This class provides methods for EEG data processing, such as reference setting, z-score normalization,
+    and artifact rejection based on flat channel activity. It enables customization of processing through various
+    parameters that control time window size for flat channel detection, activity thresholds, and masking around
+    detected artifacts.
+
+    Attributes:
+        - params (dict): Dictionary containing processing parameters.
+        - BCT (ndarray): Binary Correlation Threshold matrix indicating artifact locations in the EEG data.
+        - mu (float or ndarray): Mean value(s) used for z-score normalization.
+        - sd (float or ndarray): Standard deviation(s) used for z-score normalization.
+        - n_rejected_data (int): Number of data points identified and rejected as artifacts.
+        
+    Args:
+        - raw (object): Object containing raw EEG data.
+        - time_window (int, optional): Duration of each time window for flat activity detection. Defaults to 10 seconds.
+        - time_window_step (int, optional): Step size for moving the time window in flat activity detection. Defaults to 5 seconds.
+        - min_change (int, optional): Minimum change in activity across 5 samples to consider a channel as non-flat. Defaults to 1e-7.
+        - thresh (float, optional): Threshold for rejecting data if more than a certain proportion of the data within a time window is flat. Defaults to 5.
+        - bad_data (str, optional): Method for replacing bad data ('none', '0', 'nan'). Defaults to 'none'.
+        - mask (int, optional): Time in seconds to mask data around detected artifacts. Defaults to 0.
+        - do_reference_data (bool, optional): Flag for setting an EEG reference. Defaults to False.
+        - do_zscore (bool, optional): Flag for computing z-score normalization. Defaults to False.
+        - update_BCT (bool, optional): Flag for updating artifacts comparison between new and previous BCTs. Defaults to True.
+        - update_summary (bool, optional): Flag for printing status of bad samples in continuous data. Defaults to True.
+        - update_algorithm (bool, optional): Flag for saving parameters related to the rejection matrix. Defaults to True.
+        - config (bool, optional): Flag for using configuration to set parameters. Defaults to False.
+        - name (str, optional): Name of the flat-activity-based rejection algorithm. Defaults to 'FlatChannel'.
+        - loop_name (list, optional): List of names specifying loops in configuration, if used. Defaults to an empty list.
+
+    Methods:
+        __init__(self, raw, time_window=10, time_window_step=5, min_change=1e-7, bad_data='none', mask=0, 
+            do_reference_data=False, do_zscore=False,
+            update_BCT=True, update_summary=True, update_algorithm=True, config=False,
+            name='FlatChannel', loop_name=[]): 
+        Initializes the FlatChannel object with the necessary attributes and begins data processing.
+    """
+    def __init__(self, raw, time_window=10, time_window_step=5, min_change=1e-7, thresh=5, bad_data='none', 
+                mask=0, do_reference_data=False, do_zscore=False, 
+                update_BCT=True, update_summary=True, update_algorithm=True, config=False, 
+                name='FlatChannel', loop_name=[]):
+        """
+        Initialize the FlatChannel object which identifies and rejects bad raw EEG data based on 
+        flat channel activity over specified time windows.
+        """
+
+        # Initialize a dictionary to hold parameters for the raw EEG data processing
+        self.params = {
+            'time_window': time_window, 
+            'time_window_step': time_window_step, 
+            'min_change': min_change, 
+            'thresh': thresh,
+            'bad_data': bad_data, 
+            'mask': mask, 
+            'do_reference_data': do_reference_data,
+            'do_zscore': do_zscore, 
+            'update_BCT': update_BCT, 
+            'update_summary': update_summary, 
+            'update_algorithm': update_algorithm,  
+            'config': config,  
+            'name': name, 
+            'loop_name': loop_name 
+        }
+
+
+        # Get configuration (user-input parameters)
+        if config:
+            from apice.artifacts_rejection import update_parameters_with_user_inputs
+            self.params = update_parameters_with_user_inputs(self.params, eval('apice.parameters.' + loop_name + '.' + name))
+
+        # Output status of data rejection based on flat channel activity
+        print('\nRejecting data based on flat channel activity...')
+        print('-- referenced data: ', self.params['do_reference_data'])
+        print('-- z-score data: ', self.params['do_zscore'])
+
+        # Initialize artifact rejection matrix
+        raw.artifacts = Artifacts(raw)
+
+        # Set reference to mean amplitude of channels
+        if self.params['do_reference_data']:
+            set_reference(raw, bad_data=self.params['bad_data'], save_reference=False)
+
+        # Compute z-score for the artifacts
+        if self.params['do_zscore']:
+            raw._data, self.mu, self.sd = compute_z_score(raw)
+
+        # Reject electrodes per (per time window) based on flat channel activity
+        BCT = self.reject_electrodes_based_on_flat_activity(raw, self.params['time_window'], 
+                                                            self.params['time_window_step'],
+                                                            self.params['min_change'],
+                                                            self.params['thresh'])
+        # Update rejection matrix
+        update_rejection_matrix(raw.artifacts, self.__class__.__name__, self.params, BCT)
+
+        # Get data back
+        if self.params['do_zscore']:
+            return_data_after_zscore(raw, self.sd, self.mu)
+        if self.params['do_reference_data']:
+            return_data_after_referencing(raw)
+
+        # Mask around artifacts
+        if self.params['mask']:
+            BCT = mask_around_artifacts(raw, mask_length=self.params['mask'])
+            # Update rejection matrix
+            update_rejection_matrix(raw.artifacts, self.__class__.__name__, self.params, BCT)
+
+        # Save a copy of BCT
+        self.BCT = BCT
+
+        # Display the total rejected data
+        self.n_rejected_data = np.round(np.sum(BCT))
+        print(f'\nTotal rejected data: {self.n_rejected_data / np.size(BCT) * 100:.2f}%')
+
+
+    @staticmethod
+    def get_proportion_low_activity_per_time_window(raw, i_t, min_change):
+        """
+        Compute the proportion of low activity per time window for raw EEG data.
+
+        Parameters
+        ----------
+        raw : MNE Raw object
+            An object containing the raw EEG data and related information such as sampling frequency.
+        i_t : ndarray
+            An array with indices representing the start and end samples of each time window within the raw EEG data.
+        min_change : float
+            The minimum change in amplitude required to consider a channel as active.
+
+        Returns
+        -------
+        proportion_low_activity : ndarray
+            A 2D array with shape (n_electrodes, n_time_windows) containing the proportion of low activity
+            for each electrode and time window.
+        
+        Notes
+        -----
+        This function computes the proportion of low activity for each electrode within each time window. Low activity is defined
+        as the EEG signal having a change in amplitude smaller than the specified minimum change within 5 samples.
+        """
+
+        # maximiun change in time windows of 5 samples 
+        twind = 5/raw.info['sfreq']
+        change = maxchange(raw, twind, twind/2)
+        
+        # check when the change is too small
+        small_change = change<min_change
+        
+        # reshape
+        n_electrodes, n_samples, n_epochs = Raw.get_data_size(raw)
+        if len(np.shape(raw._data))==2:
+            small_change = small_change[np.newaxis,:,:]
+                    
+        # Initialize variables
+        n_tw = np.shape(i_t)[1]
+        proportion_flat_tw = np.empty((n_epochs, n_electrodes, n_tw))
+        proportion_flat_tw[:] = np.nan
+
+        # compute the proportion of data with a small chnage in the time windows
+        for ep in range(n_epochs):
+            for itw in range(n_tw):
+                d = small_change[ep, :, i_t[:, itw]]  
+                # propotion of data with small changes
+                p = 100*(np.sum(d, axis=0)/d.shape[0])
+                # store the data
+                proportion_flat_tw[ep, :, itw] = p
+
+        return proportion_flat_tw
+
+    @staticmethod
+    def get_data_to_reject_based_on_proportion_flat(proportion_flat_tw, thresh):
+        """
+        Identify which data segments should be rejected based on the band power thresholds.
+
+        Parameters
+        ----------
+        proportion_flat_tw : ndarray
+            A 3D array containing the proportion of flat activity for each time window and electrode.
+        thresh : float
+            Threshold for rejecting data if more than a certain amount of the data within a time window is flat.
+
+        Returns
+        -------
+        data_to_reject : ndarray
+            An array indicating the segments of data that exceed the flat activity threshold and are considered bad.
+
+        """
+        
+        return proportion_flat_tw > thresh
+
+    @staticmethod
+    def reject_bad_data_based_on_flat_activity(raw, data_to_reject, i_t):
+        """
+        Reject segments of raw EEG data that exceed defined flat activity thresholds.
+
+        The method processes the binary arrays indicating whether data points exceed the flat activity
+        thresholds. These arrays are used to construct a bad channel-time matrix (BCT) that identifies
+        the time samples to be rejected for each channel.
+
+        Parameters
+        ----------
+        raw : Raw
+            The raw MNE-Python raw EEG object containing the raw EEG data and related information.
+        data_to_reject : ndarray
+            A boolean array indicating data points exceeding the flat activity threshold.
+        i_t : ndarray
+            An array containing the indices of the initial and final time samples of each time window.
+
+        Returns
+        -------
+        BCT : ndarray
+            A boolean array marking the bad data segments for each channel and time sample.
+        """
+        
+        # Calculate the total number of points to be rejected
+        rl_sum = np.sum(data_to_reject)
+
+        # Display the percentage of data rejected 
+        n = np.prod(np.shape(data_to_reject))
+        print(f'\nData rejected due to flat activity {np.round(rl_sum / n * 100, 2)}%')
+
+        # Determine the size of the raw EEG data for matrix initialization
+        n_electrodes, n_samples, n_epochs = Raw.get_data_size(raw)
+
+        # Initialize the binary channel-time rejection matrix (BCT) with False (indicating 'not rejected')
+        BCT = np.full((n_epochs, n_electrodes, n_samples), False)
+        
+        # Retrieve the indices of the start and end of each time window
+        Ti = i_t[0, :]  # Start times of the time windows
+        Tf = i_t[-1, :]  # End times of the time windows
+
+        # Process each epoch and electrode to update the BCT matrix with rejected segments
+        for ep in np.arange(n_epochs):
+            for el in np.arange(n_electrodes):
+                # Get the rejection flags for the current electrode and epoch
+                rl = data_to_reject[ep, el, :]
+                # Determine the start and end times of the rejected segments
+                til = Ti[rl]
+                tfl = Tf[rl]
+                # If there are multiple rejected segments, ensure they are properly delineated
+                if len(tfl) > 1:
+                    til, tfl = insert_initial_and_final_samples(til, tfl)
+                # Mark the segments as rejected in the BCT matrix
+                for j in np.arange(len(til)):
+                    BCT[ep, el, til[j]:tfl[j] + 1] = True
+        
+        return BCT
+    
+    def reject_electrodes_based_on_flat_activity(self, raw, time_window, time_window_step, min_change, thresh):
+        """
+        Rejects segments of raw EEG data based on flat channel activity.
+
+        Parameters
+        ----------
+        raw : MNE Raw object
+            The object containing the raw EEG data and related information such as sampling frequency.
+        time_window : float
+            The length of each time window in seconds.
+        time_window_step : float
+            The step size between consecutive time windows in seconds.
+        min_change : float
+            The minimum change in amplitude required to consider a channel as active.
+        thresh : float
+            Threshold for rejecting data if more than a certain amount of the data within a time window is flat.
+        
+        Returns
+        -------
+        BCT : ndarray
+            A boolean rejection matrix with the same number of epochs and electrodes as the raw EEG data, indicating
+            whether a data point should be rejected (True) or not (False).
+
+        Notes
+        -----
+        The function prints the percentage of data rejected due to flat channel activity. The rejection is based on 
+        entire time windows, and the output matrix 'BCT' can be used to mask the raw EEG data array, effectively 
+        removing the segments of data considered to be artifacts.
+        """
+        
+        # Define time windows
+        bct_time_windows, i_t, n_time_window = define_time_window(raw, time_window, time_window_step)
+
+        # Compute the proportion of flat channel activity per time window (below the minimum change threshold)
+        proportion_flat_tw = self.get_proportion_low_activity_per_time_window(raw, i_t, min_change)
+
+        # Determine which data segments to reject based on more than a certain proportion of time within the window being flat
+        data_to_reject = self.get_data_to_reject_based_on_proportion_flat(proportion_flat_tw, thresh)
+        
+        # Execute the rejection of bad data segments from the EEG based on flat channel activity criteria
+        BCT = self.reject_bad_data_based_on_flat_activity(raw, data_to_reject, i_t)
+
+        return BCT
+
 
 
 class ShortGoodSegments:

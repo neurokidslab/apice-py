@@ -568,7 +568,7 @@ class Artifacts:
     """
 
     DETECTION_ALGORITHMS = [
-        'Power', 'ChannelCorr', 'TimeVariance', 'TimeVariance_AverageReferenced',
+        'Power', 'ChannelCorr', 'FlatChannel', 'TimeVariance', 'TimeVariance_AverageReferenced',
         'Amplitude', 'AmplitudeAbsoluteThresh', 'AmplitudeRelativeThresh',
         'AmplitudeRelativeThresh_AverageReferenced', 'RunningAverage',
         'RunningAverage_AverageReferenced', 'FastChange',

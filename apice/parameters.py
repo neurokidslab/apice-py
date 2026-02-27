@@ -83,16 +83,32 @@ class BadElectrodes:
         use_relative_thresh=[True, True]
     )
 
+    """Parameters for rejecting electrodes based on flat activity"""
+    FlatChannel = dict(
+        algorithm='FlatChannel',
+        loop_num=[3],
+        # Sliding time window
+        time_window=10,  # seconds
+        time_window_step=5,  # seconds
+        # Activity characteristics
+        min_change=1e-7,  # uV
+        thresh=5,
+        # Other options in performing the rejection algorithm
+        do_reference_data=False,
+        do_zscore=False,
+    )
+
     """Parameters for rejecting short but good segments"""
     ShortGoodSegments = dict(
         algorithm='ShortGoodSegments',
-        loop_num=[2],
+        loop_num=[3],
         time_limit=2  # seconds
     )
 
     """Algorithms for rejecting bad electrodes"""
     PARAMS = dict(ChannelCorr=ChannelCorr,
                   Power=Power,
+                  FlatChannel=FlatChannel,
                   ShortGoodSegments=ShortGoodSegments)
 
 

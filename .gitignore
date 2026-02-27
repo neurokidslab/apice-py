@@ -1,0 +1,17 @@
+# Python cache
+__pycache__/
+*.py[cod]
+
+# Virtual environments
+.venv/
+venv/
+
+# Jupyter notebook cache
+.ipynb_checkpoints/
+
+# Local environment files
+.env
+.env.*
+
+# test notebook
+test_pipeline.ipynb
