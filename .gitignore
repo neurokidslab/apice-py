@@ -15,3 +15,7 @@ venv/
 
 # test notebook
 test_pipeline.ipynb
+
+# IDE specific files
+.vscode
+.idea/
