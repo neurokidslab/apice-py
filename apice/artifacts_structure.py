@@ -292,7 +292,8 @@ def annotate_bads(raw, channels=True, times=True, data=True, corrected=True):
     n_electrodes, n_samples, n_epochs = apice.io.Raw.get_data_size(raw)
     
     # Initialize annotations
-    annotations = mne.Annotations(onset=[], duration=[], description=[])
+    # annotations = mne.Annotations(onset=[], duration=[], description=[])
+    annotations = raw.annotations.copy() if hasattr(raw, 'annotations') and raw.annotations else mne.Annotations(onset=[], duration=[], description=[])
 
     # Annotate bad channels if specified and the artifact attribute exists
     if channels and hasattr(raw.artifacts, 'BC') and np.sum(raw.artifacts.BC):
@@ -454,8 +455,8 @@ def annotations_to_rejection_matrix(raw) -> None:
 
     print("Converting annotations to artifacts matrix")
     
-    # Extract annotations using the provided helper function
-    annotations = extract_annotations(raw)
+    # Convert annotations to a DataFrame for easier manipulation
+    annotations_df = raw.annotations.to_data_frame(time_format=None)
 
     # Get time vector and channel list from the raw data structure
     t = raw.times
@@ -472,25 +473,25 @@ def annotations_to_rejection_matrix(raw) -> None:
     raw.artifacts.BC[:, bad_channel_indices, :] = True
 
     # Create a rejection matrix for bad times (BT)
-    bad_time = annotations[annotations['Description'] == 'badtime'].reset_index(drop=True)
+    bad_time = annotations_df[annotations_df['description'] == 'badtime'].reset_index(drop=True)
 
     # Vectorize search for nearest indices
-    onset_indices = np.searchsorted(t, bad_time['Onset'])
-    end_indices = np.searchsorted(t, bad_time['Onset'] + bad_time['Duration'])
+    onset_indices = np.searchsorted(t, bad_time['onset'])
+    end_indices = np.searchsorted(t, bad_time['onset'] + bad_time['duration'])
 
     # Efficiently apply the artifacts mask
     for start, end in zip(onset_indices, end_indices):
         raw.artifacts.BT[:, :, start:end] = True
 
     # Create a rejection matrix for bad data (BCT)
-    bad_data = annotations[annotations['Description'] == 'artifact'].reset_index(drop=True)
+    bad_data = annotations_df[annotations_df['description'] == 'artifact'].reset_index(drop=True)
 
     # Vectorized search for nearest indices
-    onset_indices = np.searchsorted(t, bad_data['Onset'])
-    end_indices = np.searchsorted(t, bad_data['Onset'] + bad_data['Duration'])
+    onset_indices = np.searchsorted(t, bad_data['onset'])
+    end_indices = np.searchsorted(t, bad_data['onset'] + bad_data['duration'])
 
     # Precompute channel indices
-    channel_indices = np.array([np.where(ch_names == ch)[0][0] for ch in bad_data['Channel']])
+    channel_indices = np.array([np.where(ch_names == ch)[0][0] for ch in bad_data['ch_names']])
 
     # Efficiently apply the artifacts mask
     for ep in range(n_epochs):
@@ -498,23 +499,46 @@ def annotations_to_rejection_matrix(raw) -> None:
             raw.artifacts.BCT[ep, el, start:end] = True  
 
     # Create a rejection matrix for corrected data (CCT)
-    corrected_data = annotations[annotations['Description'] == 'corrected'].reset_index(drop=True)
+    corrected_data = annotations_df[annotations_df['description'] == 'corrected'].reset_index(drop=True)
 
     # Initialize CCT matrix if it doesn't exist
     if not hasattr(raw.artifacts, 'CCT'):
         raw.artifacts.CCT = np.full((n_epochs, n_electrodes, n_samples), False)
 
     # Vectorized search for nearest indices
-    onset_indices = np.searchsorted(t, corrected_data['Onset'])
-    end_indices = np.searchsorted(t, corrected_data['Onset'] + corrected_data['Duration'])
+    onset_indices = np.searchsorted(t, corrected_data['onset'])
+    end_indices = np.searchsorted(t, corrected_data['onset'] + corrected_data['duration'])
 
     # Precompute channel indices
-    channel_indices = np.array([np.where(ch_names == ch)[0][0] for ch in corrected_data['Channel']])
+    channel_indices = np.array([np.where(ch_names == ch)[0][0] for ch in corrected_data['ch_names']])
 
     # Efficiently apply the corrected artifacts mask
     for ep in range(n_epochs):
         for el, start, end in zip(channel_indices, onset_indices, end_indices):
             raw.artifacts.CCT[ep, el, start:end] = True 
+
+def remove_artifacts_annotations(raw) -> None:
+
+    print("Removing artifact-related annotations")
+    
+    # Convert annotations to a DataFrame for easier manipulation
+    annotations_df = raw.annotations.to_data_frame(time_format=None)
+
+    # Separate the annotations for artifacts and get the event annotations
+    annotations_temp_df = annotations_df[
+        ~annotations_df["description"].isin(["artifact", "corrected", "badtime"])
+    ].copy()
+
+    # Create new annotations without the artifact annotations
+    annotations_events = mne.Annotations(
+        onset=list(annotations_temp_df["onset"]),
+        duration=list(annotations_temp_df["duration"]),
+        description=list(annotations_temp_df["description"]),
+        ch_names=list(annotations_temp_df["ch_names"]),
+    )
+
+    # Set raw with new annotations
+    raw.set_annotations(annotations_events)
 
 def plot_percentage_of_bad_data_across_sensors(raw):
     # Get the percentage of bad data per electrodes
