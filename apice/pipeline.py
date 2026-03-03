@@ -190,8 +190,6 @@ def run(input_dir, output_dir,
                low_pass_freq=Filters.low_pass_freq, 
                n_jobs=n_jobs)
 
-        raw._data = mne.baseline.rescale(raw._data, raw.times, baseline=(None, None), mode='mean', copy=False)
-        
         # ARTIFACT DETECTION
         detect_artifacts(raw)
         df_preprocessing_summary = get_summary(subject_no, subject_name, raw, df_preprocessing_summary, option='preprocessing')
@@ -409,9 +407,6 @@ def correct_artifacts(raw, n_jobs=-1):
     # Apply Target PCA per electrode and rescale baseline
     TargetPCA(raw, config=True)
     
-    # Rescale the EEG data baseline to mean
-    raw._data = mne.baseline.rescale(raw._data, raw.times, baseline=(None, None), mode='mean', copy=False)
-    
     # Apply high-pass filtering to the EEG data
     Filter(raw,
            high_pass_freq=Filters.high_pass_freq, 
@@ -423,9 +418,6 @@ def correct_artifacts(raw, n_jobs=-1):
 
     # Apply Spherical Spline Interpolation for artifact correction
     SegmentSphericalSplineInterpolation(raw, n_jobs, config=True)
-    
-    # Rescale the EEG data baseline again post-interpolation
-    raw._data = mne.baseline.rescale(raw._data, raw.times, baseline=(None, None), mode='mean', copy=False)
     
     # Re-apply high-pass filtering post-interpolation
     Filter(raw, high_pass_freq=Filters.high_pass_freq, low_pass_freq=[], n_jobs=n_jobs)
@@ -507,9 +499,6 @@ def segment_data(raw, event_keys, tmin, tmax, n_jobs=-1, baseline_time_window=No
         print('\n')
         epochs.set_eeg_reference(ref_channels='average')
     
-    # Correct baseline
-    epochs._data = mne.baseline.rescale(epochs._data, epochs.times, baseline=baseline_time_window, mode='mean', copy=False)
-
     # Print summary of artifacts and processing
     print(f"\nSummary: {print(epochs.artifacts.print_summary())}\n")
 
