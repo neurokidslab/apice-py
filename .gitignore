@@ -13,8 +13,11 @@ venv/
 .env
 .env.*
 
-# test notebook
-test_pipeline.ipynb
+# tests
+tests/
+*test*.ipynb
+*test*.py
+
 
 # IDE specific files
 .vscode

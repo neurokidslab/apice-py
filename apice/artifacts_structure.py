@@ -3,13 +3,13 @@
 # Import necessary modules
 import mne  
 import numpy as np 
+import pandas as pd
 from prettytable import PrettyTable 
 import matplotlib.pyplot as plt 
 
 # Import specific modules from your project's modules
 from apice.parameters import *  
-import pandas as pd  
-import apice.io  
+from apice.utils import get_data_size
 
 
 # %% FUNCTIONS
@@ -38,7 +38,7 @@ def remove_bad_data(raw, bad_data='none', artifact_type='all', silent=False):
     """
     
     # Retrieve the data size for dimensions setup
-    n_electrodes, n_samples, n_epochs = apice.io.Raw.get_data_size(raw)
+    n_electrodes, n_samples, n_epochs = get_data_size(raw)
 
     # Initialize a boolean array for indexing data to remove
     data_to_remove = np.full((n_epochs, n_electrodes, n_samples), False)
@@ -128,7 +128,7 @@ def set_reference(raw, bad_data='none', save_reference=False):
     good_data = remove_bad_data(raw, bad_data=bad_data)
 
     # Reference to the mean
-    n_electrodes, n_samples, n_epochs = apice.io.Raw.get_data_size(raw)
+    n_electrodes, n_samples, n_epochs = get_data_size(raw)
 
     # Calculate the average reference for the EEG data. The check is on the shape of the good_data variable.
     if n_epochs == 1: 
@@ -197,7 +197,7 @@ def compute_z_score(raw):
     warnings.filterwarnings("ignore")
 
     # Retrieve the dimensions of the data.
-    n_electrodes, n_samples, n_epochs = apice.io.Raw.get_data_size(raw)
+    n_electrodes, n_samples, n_epochs = get_data_size(raw)
 
     # Copy EEG data to prevent modification of the original.<
     raw_data = raw._data.copy()
@@ -289,7 +289,7 @@ def annotate_bads(raw, channels=True, times=True, data=True, corrected=True):
     """
     
     # Extract raw data dimensions
-    n_electrodes, n_samples, n_epochs = apice.io.Raw.get_data_size(raw)
+    n_electrodes, n_samples, n_epochs = get_data_size(raw)
     
     # Initialize annotations
     # annotations = mne.Annotations(onset=[], duration=[], description=[])
@@ -375,6 +375,102 @@ def annotate_bads(raw, channels=True, times=True, data=True, corrected=True):
             # Update the raw object with these new annotations for each epoch
             raw.set_annotations(annotations)
 
+def rejection_matrix_to_data_frame(epochs):
+
+    artifacts_df = pd.DataFrame(columns=['epoch', 'ch_names', 'description', 'onset', 'duration'])  
+    
+    # BCT
+    for ep in np.arange(np.shape(epochs.artifacts.BCT)[0]):
+        for el in np.arange(np.shape(epochs.artifacts.BCT)[1]):
+                onset, duration = calculate_event_onsets_and_durations(epochs.artifacts.BCT[ep, el, :], epochs.times, epochs.info['sfreq'])
+                if len(onset) > 0:
+                    for i in range(len(onset)):
+                        artifacts_df.loc[len(artifacts_df)] = [ep, epochs.ch_names[el], 'artifact', onset[i], duration[i]]
+    # BC
+    for ep in np.arange(np.shape(epochs.artifacts.BC)[0]):
+        for el in np.arange(np.shape(epochs.artifacts.BC)[1]):
+                if epochs.artifacts.BC[ep, el, 0]:
+                    artifacts_df.loc[len(artifacts_df)] = [ep, epochs.ch_names[el], 'badchannel', None, None]
+
+    # BE
+    for ep in np.arange(np.shape(epochs.artifacts.BE)[0]):
+        if epochs.artifacts.BE[ep, 0, 0]:
+            artifacts_df.loc[len(artifacts_df)] = [ep, None, 'badepoch', None, None]
+    
+    # BT
+    for ep in np.arange(np.shape(epochs.artifacts.BT)[0]):
+        onset, duration = calculate_event_onsets_and_durations(epochs.artifacts.BT[ep, 0, :], epochs.times, epochs.info['sfreq'])
+        if len(onset) > 0:
+            for i in range(len(onset)):
+                artifacts_df.loc[len(artifacts_df)] = [ep, None, 'badtime', onset[i], duration[i]]
+    
+    # BCT
+    for ep in np.arange(np.shape(epochs.artifacts.CCT)[0]):
+        for el in np.arange(np.shape(epochs.artifacts.CCT)[1]):
+                onset, duration = calculate_event_onsets_and_durations(epochs.artifacts.CCT[ep, el, :], epochs.times, epochs.info['sfreq'])
+                if len(onset) > 0:
+                    for i in range(len(onset)):
+                        artifacts_df.loc[len(artifacts_df)] = [ep, epochs.ch_names[el], 'corrected', onset[i], duration[i]]
+    
+    return artifacts_df
+
+def dataframe_to_rejection_matrix(epochs, artifacts_df):
+    
+    if 'ch_names' not in artifacts_df.columns:
+        artifacts_df['ch_names'] = None 
+    if 'epoch' not in artifacts_df.columns:
+        artifacts_df['epoch'] = None
+
+    # Initialize artifacts structure
+    epochs.artifacts = Artifacts(epochs)
+
+    # Get time vector and channel list from the raw data structure
+    t = epochs.times
+    ch_names = np.asarray(epochs.ch_names)
+
+    # Get data size information from the custom Raw object
+    n_electrodes, n_samples, n_epochs = get_data_size(epochs)
+
+    # Set in the rejection matrix the bad channels
+    for ep in np.arange(n_epochs):
+        bad_channels = artifacts_df[(artifacts_df['description'] == 'badchannel') & (artifacts_df['epoch'] == ep)]['ch_names'].values
+        bad_channel_indices = np.array([np.where(ch_names == el)[0] for el in bad_channels], dtype=int).flatten()
+        epochs.artifacts.BC[ep, bad_channel_indices, :] = True
+
+    # Set in the rejection matrix the bad times
+    for ep in np.arange(n_epochs):
+        bad_time = artifacts_df[(artifacts_df['description'] == 'badtime') & (artifacts_df['epoch'] == ep)].reset_index(drop=True)
+        onset_indices = np.searchsorted(t, bad_time['onset'])
+        end_indices = np.searchsorted(t, bad_time['onset'] + bad_time['duration'])
+        for start, end in zip(onset_indices, end_indices):
+            epochs.artifacts.BT[ep, :, start:end] = True
+
+    # Set in the rejection matrix the bad data
+    for ep in np.arange(n_epochs):
+        bad_data = artifacts_df[(artifacts_df['description'] == 'artifact') & (artifacts_df['epoch'] == ep)].reset_index(drop=True)
+        onset_indices = np.searchsorted(t, bad_data['onset'])
+        end_indices = np.searchsorted(t, bad_data['onset'] + bad_data['duration'])
+        channel_indices = np.array([np.where(ch_names == ch)[0][0] for ch in bad_data['ch_names']])
+        for el, start, end in zip(channel_indices, onset_indices, end_indices):
+            epochs.artifacts.BCT[ep, el, start:end] = True
+
+    # Set in the rejection matrix the corrected data
+    for ep in np.arange(n_epochs):  
+        corrected_data = artifacts_df[(artifacts_df['description'] == 'corrected') & (artifacts_df['epoch'] == ep)].reset_index(drop=True)
+        onset_indices = np.searchsorted(t, corrected_data['onset'])
+        end_indices = np.searchsorted(t, corrected_data['onset'] + corrected_data['duration'])
+        channel_indices = np.array([np.where(ch_names == ch)[0][0] for ch in corrected_data['ch_names']])
+        for el, start, end in zip(channel_indices, onset_indices, end_indices):
+            epochs.artifacts.CCT[ep, el, start:end] = True
+    
+    # Set in the rejection matrix the bad epochs
+    for ep in np.arange(n_epochs):
+        if len(artifacts_df[(artifacts_df['description'] == 'badepoch') & (artifacts_df['epoch'] == ep)]) > 0:
+            epochs.artifacts.BE[ep, 0, 0] = True
+
+
+    return epochs
+        
 
 def find_nearest_element_and_index(array, value):
     """
@@ -405,39 +501,6 @@ def find_nearest_element_and_index(array, value):
     return array[idx], idx
 
 
-def extract_annotations(raw) -> pd.DataFrame:
-    """
-    Extracts annotations from an MNE-Python EEG object and returns them as a pandas DataFrame.
-    
-    Parameters:
-    - raw: Raw object
-        The EEG object from MNE-Python containing annotations.
-    
-    Returns:
-    - DataFrame
-        A pandas DataFrame with the annotations data, including channels, descriptions, onsets, and durations.
-        
-    Notes:
-    - The function assumes that the annotations in the EEG object are structured with ch_names, description, onset, and duration attributes.
-    - The function will fail if the EEG object does not contain annotations or if the annotations do not have the expected attributes.
-    """
-    
-    # Check if the EEG object has the attribute 'annotations'
-    if hasattr(raw, 'annotations') and raw.annotations:
-        # Create a DataFrame to hold the annotations
-        annotations = pd.DataFrame(data=[], columns=['Channel', 'Description', 'Onset', 'Duration'])
-        
-        # Assign each column in the DataFrame by extracting corresponding data from the annotations
-        annotations['Channel'] = raw.annotations.ch_names if hasattr(raw.annotations, 'ch_names') else ['N/A'] * len(raw.annotations.onset)
-        annotations['Description'] = raw.annotations.description
-        annotations['Onset'] = raw.annotations.onset
-        annotations['Duration'] = raw.annotations.duration
-        
-        return annotations
-    else:
-        # If there are no annotations, return an empty DataFrame with the same structure
-        return pd.DataFrame(columns=['Channel', 'Description', 'Onset', 'Duration'])
-
 def annotations_to_rejection_matrix(raw) -> None:
     """
     Converts annotations in an EEG raw data structure to a rejection matrix format.
@@ -457,13 +520,15 @@ def annotations_to_rejection_matrix(raw) -> None:
     
     # Convert annotations to a DataFrame for easier manipulation
     annotations_df = raw.annotations.to_data_frame(time_format=None)
+    if 'ch_names' not in annotations_df.columns:
+        annotations_df['ch_names'] = None 
 
     # Get time vector and channel list from the raw data structure
     t = raw.times
     ch_names = np.asarray(raw.ch_names)
 
     # Get data size information from the custom Raw object
-    n_electrodes, n_samples, n_epochs = apice.io.Raw.get_data_size(raw)
+    n_electrodes, n_samples, n_epochs = get_data_size(raw)
 
     # Create a rejection matrix for bad channels (BC)
     # Get indices of bad channels and ensure they are integers
@@ -613,7 +678,7 @@ class Artifacts:
         """
 
         # Get data size information from the EEG object.
-        n_electrodes, n_samples, n_epochs = apice.io.Raw.get_data_size(raw)
+        n_electrodes, n_samples, n_epochs = get_data_size(raw)
         
         # Initialize all possible types of artifact rejection matrices.
         artifacts_types = {
@@ -799,7 +864,7 @@ class DefineBTBC:
         """
         
         # Extract data dimensions
-        n_electrodes, n_samples, n_epochs = apice.io.Raw.get_data_size(raw)
+        n_electrodes, n_samples, n_epochs = get_data_size(raw)
         
         # Determine the initial state of bad channel and bad time matrices
         # based on the keep_rejected parameter
@@ -859,7 +924,7 @@ class DefineBTBC:
         """
         
         # Extract necessary data size information from the EEG object
-        n_electrodes, n_samples, n_epochs = apice.io.Raw.get_data_size(raw)
+        n_electrodes, n_samples, n_epochs = get_data_size(raw)
         
         # Copy thresholds for internal manipulation
         DefBT = thresh_bad_times
@@ -1231,7 +1296,6 @@ class DefineBTBC:
         # Import necessary modules
         import numpy as np
         import matplotlib.pyplot as plt
-        from apice.io import Raw
         
         # Functions
         def prepare_cmap(ax, data, artifact, color_scheme='gnuplot'):
@@ -1313,7 +1377,7 @@ class DefineBTBC:
 
 
         # Extract the dimensions of the EEG data for plotting
-        n_electrodes, n_samples, n_epochs = Raw.get_data_size(raw)
+        n_electrodes, n_samples, n_epochs = get_data_size(raw)
 
         # Initialize a matrix to store artifact occurrence information
         M = np.zeros(np.shape(raw.artifacts.BCT))

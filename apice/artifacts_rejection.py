@@ -9,8 +9,9 @@ from apice.filter import *
 from apice.artifacts_structure import Artifacts 
 import apice.artifacts_detection  
 import apice.artifacts_structure 
-from apice.io import Raw 
 from apice.parameters import * 
+from apice.utils import get_data_size
+
 
 
 # %% FUNCTIONS
@@ -54,7 +55,7 @@ def print_data_info(raw, name, params, max_loop_num):
     print_artifact_header(names[name])
 
     # Data size information
-    n_electrodes, n_samples, n_epochs = Raw.get_data_size(raw)
+    n_electrodes, n_samples, n_epochs = get_data_size(raw)
     total_samples = n_electrodes * n_samples * n_epochs
     print(f'{n_electrodes} electrodes, {n_samples} samples, {n_epochs} epochs')
     print(f'Initial number of samples: {total_samples}')

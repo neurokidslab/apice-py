@@ -5,7 +5,7 @@ from scipy import interpolate
 
 import apice
 from apice.artifacts_structure import Artifacts, set_reference, compute_z_score
-from apice.io import Raw
+from apice.utils import get_data_size
 
 # Configuration to ignore divide by zero errors in numpy
 np.seterr(divide='ignore')
@@ -21,7 +21,7 @@ warnings.simplefilter("ignore", category=RuntimeWarning)
 
 def maxchange(raw, time_window, time_window_step):
     
-    n_electrodes, n_samples, n_epochs = Raw.get_data_size(raw)
+    n_electrodes, n_samples, n_epochs = get_data_size(raw)
     
     # find the time windows
     if time_window and time_window<(n_samples/raw.info['sfreq']):
@@ -61,7 +61,7 @@ def maxchange(raw, time_window, time_window_step):
 
 
 def interpolate_tw(raw, data_tw, time_tw):
-    n_electrodes, n_samples, n_epochs = Raw.get_data_size(raw)
+    n_electrodes, n_samples, n_epochs = get_data_size(raw)
     
     data = np.empty((n_epochs, n_electrodes, n_samples))
     data[:]= np.nan
@@ -136,7 +136,7 @@ def define_time_window(raw, time_window, time_window_step):
     """
     
     # Retrieve the dimensions of the raw EEG data:
-    n_electrodes, n_samples, n_epochs = Raw.get_data_size(raw)
+    n_electrodes, n_samples, n_epochs = get_data_size(raw)
 
     # Check if the time window and step are valid and not infinite
     if time_window and time_window != np.inf:
@@ -238,7 +238,7 @@ def return_data_after_zscore(raw, sd, mu):
     """
 
     # Get the data size for reshaping purposes
-    n_electrodes, n_samples, n_epochs = Raw.get_data_size(raw)
+    n_electrodes, n_samples, n_epochs = get_data_size(raw)
 
     # Flatten the data for the operation (n_electrodes, n_samples * n_epochs)
     temp_data = np.reshape(raw._data, (n_electrodes, n_samples * n_epochs))
@@ -266,7 +266,7 @@ def return_data_after_referencing(raw):
     """
 
     # Retrieve the number of electrodes to determine the shape of the data
-    n_electrodes, _, _ = Raw.get_data_size(raw)
+    n_electrodes, _, _ = get_data_size(raw)
 
     # Create an array of the mean reference values repeated across all electrodes
     temp = np.tile(raw.mean_reference, (n_electrodes, 1))
@@ -292,7 +292,7 @@ def create_mask_matrix(raw, mask_length=0.05):
     """
 
     # Get the size of the data to determine the structure of the mask matrix
-    n_electrodes, n_samples, n_epochs = Raw.get_data_size(raw)
+    n_electrodes, n_samples, n_epochs = get_data_size(raw)
 
     # Retrieve the bad channel times (BCT) matrix from the raw data
     BCT = raw.artifacts.BCT
@@ -362,7 +362,7 @@ def mask_around_artifacts(raw, mask_length=0.5):
     BCT_masked = np.logical_or(BCT, mask_matrix)
 
     # Display new rejected data
-    n = np.prod(Raw.get_data_size(raw))
+    n = np.prod(get_data_size(raw))
     new_rejected_data = np.logical_and(BCT_masked, np.logical_not(raw.artifacts.BCT))
     new_total_of_rejected_data = np.sum(new_rejected_data)
     print('\nData rejected due to masking : ', np.round(new_total_of_rejected_data / n * 100, 2), '%')
@@ -622,7 +622,7 @@ class ChannelCorr:
         """
         
         # Extract dimensions of raw EEG data
-        n_electrodes, n_samples, n_epochs = Raw.get_data_size(raw)
+        n_electrodes, n_samples, n_epochs = get_data_size(raw)
 
         # Create time windows matrix
         bct_time_windows, i_t, n_time_window = define_time_window(raw, time_window=time_window,
@@ -690,7 +690,7 @@ class ChannelCorr:
         print(f'\nData rejected due to low correlation: lower threshold {np.round(rl_sum / n * 100, 2)}%')
 
         # Determine the size of the raw EEG data for matrix initialization
-        n_electrodes, n_samples, n_epochs = Raw.get_data_size(raw)
+        n_electrodes, n_samples, n_epochs = get_data_size(raw)
 
         # Initialize the binary channel-time rejection matrix (BCT) with False (indicating 'not rejected')
         BCT = np.full((n_epochs, n_electrodes, n_samples), False)
@@ -988,7 +988,7 @@ class Power:
         n_time_window = len(i_t[0]) 
         
         # Get the dimensions of the EEG data array
-        n_electrodes, n_samples, n_epochs = Raw.get_data_size(raw) 
+        n_electrodes, n_samples, n_epochs = get_data_size(raw) 
 
         # Get time series data
         raw_data = raw._data.copy()
@@ -1061,7 +1061,7 @@ class Power:
         """
         
         # Display rejected data information
-        n_electrodes, n_samples, n_epochs = Raw.get_data_size(raw)
+        n_electrodes, n_samples, n_epochs = get_data_size(raw)
         n_time_window = np.shape(data_to_reject_upper_band)[3]
         n = n_electrodes * n_time_window * n_epochs
         n_freq_band = len(freq_band)
@@ -1321,7 +1321,7 @@ class FlatChannel:
         small_change = change<min_change
         
         # reshape
-        n_electrodes, n_samples, n_epochs = Raw.get_data_size(raw)
+        n_electrodes, n_samples, n_epochs = get_data_size(raw)
         if len(np.shape(raw._data))==2:
             small_change = small_change[np.newaxis,:,:]
                     
@@ -1394,7 +1394,7 @@ class FlatChannel:
         print(f'\nData rejected due to flat activity {np.round(rl_sum / n * 100, 2)}%')
 
         # Determine the size of the raw EEG data for matrix initialization
-        n_electrodes, n_samples, n_epochs = Raw.get_data_size(raw)
+        n_electrodes, n_samples, n_epochs = get_data_size(raw)
 
         # Initialize the binary channel-time rejection matrix (BCT) with False (indicating 'not rejected')
         BCT = np.full((n_epochs, n_electrodes, n_samples), False)
@@ -1565,7 +1565,7 @@ class ShortGoodSegments:
         """
 
         # Retrieve the dimensions of the data from the EEG object.
-        n_electrodes, n_samples, n_epochs = Raw.get_data_size(raw)
+        n_electrodes, n_samples, n_epochs = get_data_size(raw)
         
         # Copy the current state of the BCT matrix and prepare a new one for processing.
         BCT_input = raw.artifacts.BCT.copy()
@@ -1773,7 +1773,7 @@ class Amplitude:
         """
         
         # Retrieve the size of the data to determine how many electrodes, samples, and epochs we have.
-        n_electrodes, n_samples, n_epochs = Raw.get_data_size(raw)
+        n_electrodes, n_samples, n_epochs = get_data_size(raw)
         
         # Initialize a matrix to store thresholds for each electrode and each condition.
         n_relative_thresh = np.size(params['use_relative_thresh'])
@@ -1983,7 +1983,7 @@ class TimeVariance:
             np.ndarray: An array of standard deviation values representing the time variability.
         """
         # Get the dimensions of the EEG data.
-        n_electrodes, n_samples, n_epochs = Raw.get_data_size(raw)
+        n_electrodes, n_samples, n_epochs = get_data_size(raw)
 
         # Reshape the raw data to facilitate processing.
         # It's formatted as epochs x electrodes x samples.
@@ -2165,7 +2165,7 @@ class TimeVariance:
             self.get_data_to_reject_based_on_time_variance(STD, bct_time_windows, self.params)
 
         # Reject data based on time variance
-        n_electrodes, n_samples, n_epochs = Raw.get_data_size(EEG)
+        n_electrodes, n_samples, n_epochs = get_data_size(EEG)
         BCT, BCT_upper, BCT_lower = self.reject_bad_data_based_on_time_variance(data_to_reject_upper_thresh,
                                                                                 data_to_reject_lower_thresh,
                                                                                 [n_epochs, n_electrodes, n_samples],
@@ -2316,7 +2316,7 @@ class RunningAverage:
         """
         
         # Retrieve the dimensions of the raw data to define the shape of the arrays.
-        n_electrodes, n_samples, n_epochs = Raw.get_data_size(raw)
+        n_electrodes, n_samples, n_epochs = get_data_size(raw)
         
         # Initialize the fast_average array with NaN values.
         fast_average = np.empty((n_epochs, n_electrodes, n_samples))
@@ -2375,7 +2375,7 @@ class RunningAverage:
         - BCT_diff (ndarray): Boolean matrix for artifacts detected by the running average difference.
         """
         # Retrieve the dimensions of the raw data.
-        n_electrodes, n_samples, n_epochs = Raw.get_data_size(raw)
+        n_electrodes, n_samples, n_epochs = get_data_size(raw)
 
         # Initialize a matrix to hold thresholds for artifact rejection.
         n_relative_thresh = np.size(params['use_relative_thresh'])
@@ -2614,7 +2614,7 @@ class AmplitudeVariance:
         """
         
         # Retrieve the dimensions of the data:
-        n_electrodes, n_samples, n_epochs = Raw.get_data_size(raw)
+        n_electrodes, n_samples, n_epochs = get_data_size(raw)
         # Reshape the raw EEG data to a 3D array
         raw_data = np.reshape(raw._data.copy(), (n_epochs, n_electrodes, n_samples))
         
@@ -2781,7 +2781,7 @@ class ShortBadSegments:
         restore = 0
         
         # Obtain the dimensions of the data from the EEG Raw object
-        n_electrodes, n_samples, n_epochs = Raw.get_data_size(raw)
+        n_electrodes, n_samples, n_epochs = get_data_size(raw)
         
         # Create a 3D boolean array initialized to False to track which samples to include
         include_segments = np.full((n_epochs, n_electrodes, n_samples), False)
@@ -2964,7 +2964,7 @@ class FastChange:
         """
         
         # Get the number of electrodes, samples, and epochs from the raw EEG data
-        n_electrodes, n_samples, n_epochs = Raw.get_data_size(raw)
+        n_electrodes, n_samples, n_epochs = get_data_size(raw)
         
         # Calculate the number of samples that fit into the specified time window
         n_samples_time_window = np.round(params['time_window'] * raw.info['sfreq'])
@@ -3041,7 +3041,7 @@ class FastChange:
 
         # Retrieve parameters for thresholds and data dimensions
         n_relative_thresh = np.size(params['use_relative_thresh'])
-        n_electrodes, n_samples, n_epochs = Raw.get_data_size(raw)
+        n_electrodes, n_samples, n_epochs = get_data_size(raw)
         
         # Initialize a matrix to hold threshold values for each electrode
         threshold_matrix = np.empty((n_electrodes, n_relative_thresh))
@@ -3132,7 +3132,7 @@ class FastChange:
         """
         
         # Retrieve the number of electrodes, samples, and epochs from the EEG data
-        n_electrodes, n_samples, n_epochs = Raw.get_data_size(raw)
+        n_electrodes, n_samples, n_epochs = get_data_size(raw)
         
         # Create a copy of the BCT array to keep the original untouched
         BCT_input = BCT.copy()

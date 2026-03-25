@@ -4,9 +4,9 @@ import numpy as np
 import progressbar
 
 import apice.parameters
-from apice.io import Raw
 import mne
 from apice.electrode_positions import _check_origin
+from apice.utils import get_data_size
 
 # %% FUNCTIONS
 def print_header(header, separator="="):
@@ -501,7 +501,7 @@ class TargetPCA:
         """
         
         # Extract the raw data dimensions
-        n_electrodes, n_samples, n_epochs = Raw.get_data_size(raw)
+        n_electrodes, n_samples, n_epochs = get_data_size(raw)
 
         # Handle missing parameter values for target PCA
         if len(self.intertime) == 0:
@@ -949,7 +949,7 @@ class SegmentSphericalSplineInterpolation:
         print('\nSpherical Spline Interpolation of Bad Segments')
 
         # Get data size for electrodes, samples, and epochs
-        n_electrodes, n_samples, n_epochs = Raw.get_data_size(raw)
+        n_electrodes, n_samples, n_epochs = get_data_size(raw)
         
         # Initialize a matrix to track interpolated data
         interpolation_matrix = np.full((n_epochs, n_electrodes, n_samples), False)
@@ -1040,7 +1040,7 @@ class SegmentSphericalSplineInterpolation:
         """
 
         # Extract data dimensions
-        n_electrodes, n_samples, n_epochs = Raw.get_data_size(raw)
+        n_electrodes, n_samples, n_epochs = get_data_size(raw)
 
         # Process each epoch separately
         for ep in np.arange(n_epochs):
@@ -1164,7 +1164,7 @@ class SegmentSphericalSplineInterpolation:
         """
 
         # Extract data dimensions and initialize interpolation matrix
-        n_electrodes, n_samples, n_epochs = Raw.get_data_size(raw)
+        n_electrodes, n_samples, n_epochs = get_data_size(raw)
         segmentsToInterpolateMatrix = np.full((n_epochs, n_electrodes, n_samples), False)
 
         # Calculate minimum inter-time and mask time based on sampling frequency
@@ -1312,7 +1312,7 @@ class ChannelsSphericalSplineInterpolation:
         if np.size(raw._data) > 0:
 
             # Interpolate entire channels and process EEG data
-            n_electrodes, n_samples, n_epochs = Raw.get_data_size(raw)
+            n_electrodes, n_samples, n_epochs = get_data_size(raw)
             interpolation_matrix = np.full((n_epochs, n_electrodes, n_samples), False)
 
             print('\nSpatial interpolation of electrodes not working during the whole epoch...')
