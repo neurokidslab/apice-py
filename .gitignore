@@ -18,7 +18,28 @@ tests/
 *test*.ipynb
 *test*.py
 
+random/
+
+test_data/
 
 # IDE specific files
 .vscode
 .idea/
+
+# Packaging metadata
+*.egg-info/
+apice.egg-info/
+*.egg
+pip-wheel-metadata/
+
+# Build artifacts
+build/
+dist/
+
+# Test/cache artifacts
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/

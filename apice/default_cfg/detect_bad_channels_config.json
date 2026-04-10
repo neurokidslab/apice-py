@@ -1,0 +1,131 @@
+{
+    "bad_channels_basic": {
+        "position": 1,
+        "min_loops": 0,
+        "max_loops": 1,
+        "min_rejection": 0,
+        "define_bcbt": true,
+        "algorithms": {
+            "FlatChannel_1": {
+                "position": 1,
+                "class_name": "FlatChannel",
+                "parameters": {
+                    "bad_data": null,
+                    "do_reference_data": false,
+                    "do_zscore": false,
+                    "time_window": 10,
+                    "time_window_step": 5,
+                    "min_change": 1e-07,
+                    "thresh": 5,
+                    "mask": 0
+                },
+                "post_detection": false
+            },
+            "ChannelCorr_2": {
+                "position": 2,
+                "class_name": "ChannelCorr",
+                "parameters": {
+                    "bad_data": null,
+                    "do_reference_data": false,
+                    "do_zscore": false,
+                    "time_window": 10,
+                    "time_window_step": 5,
+                    "top_channel_corr": 5,
+                    "thresh": 0.4,
+                    "mask": 0
+                },
+                "post_detection": false
+            },
+            "ShortGoodSegments_3": {
+                "position": 3,
+                "class_name": "ShortGoodSegments",
+                "parameters": {
+                    "time_limit": 2
+                },
+                "post_detection": true
+            }
+        }
+    },
+    "bad_channels_power": {
+        "position": 2,
+        "min_loops": 0,
+        "max_loops": 3,
+        "min_rejection": 0.05,
+        "define_bcbt": true,
+        "algorithms": {
+            "PowerHighFreq": {
+                "position": 1,
+                "class_name": "Power",
+                "parameters": {
+                    "bad_data": null,
+                    "do_reference_data": false,
+                    "do_zscore": false,
+                    "time_window": 10,
+                    "time_window_step": 5,
+                    "freq_band": [
+                        20,
+                        40
+                    ],
+                    "thresh": [
+                        null,
+                        2
+                    ],
+                    "remove_bct": true,
+                    "remove_bt": true,
+                    "remove_bc": true,
+                    "mask": 0
+                },
+                "post_detection": false
+            },
+            "PowerLowFreq": {
+                "position": 2,
+                "class_name": "Power",
+                "parameters": {
+                    "bad_data": null,
+                    "do_reference_data": false,
+                    "do_zscore": false,
+                    "time_window": 10,
+                    "time_window_step": 5,
+                    "freq_band": [
+                        0.5,
+                        5
+                    ],
+                    "thresh": [
+                        null,
+                        2
+                    ],
+                    "remove_bct": true,
+                    "remove_bt": true,
+                    "remove_bc": true,
+                    "mask": 0
+                },
+                "post_detection": false
+            }
+        }
+    },
+    "bad_channels_modify": {
+        "position": 3,
+        "min_loops": 0,
+        "max_loops": 1,
+        "min_rejection": 0,
+        "define_bcbt": true,
+        "algorithms": {
+            "ShortGoodSegments_1": {
+                "position": 1,
+                "class_name": "ShortGoodSegments",
+                "parameters": {
+                    "time_limit": 10
+                },
+                "post_detection": true
+            },
+            "ShortBadSegments_2": {
+                "position": 2,
+                "class_name": "ShortBadSegments",
+                "parameters": {
+                    "time_limit": 0.5
+                },
+                "post_detection": true
+            }
+        }
+    }
+}

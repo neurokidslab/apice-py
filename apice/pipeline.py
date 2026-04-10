@@ -1,3 +1,5 @@
+import json
+
 import numpy as np
 import pandas as pd
 import sys
@@ -6,6 +8,18 @@ from pathlib import Path
 from datetime import datetime
 from tabulate import tabulate
 from datetime import timedelta
+import matplotlib.pyplot as plt
+from datetime import datetime, timezone
+
+
+import mne
+from mne import BaseEpochs
+
+
+from apice.data_structures import RawAPICE
+from apice.io import load_rawapice
+from apice.utils import (get_onset_and_duration, get_cfg)
+from apice.filter import Filter
 
 # %% CLASSES DEFINITIONS
 class Summary():
@@ -131,8 +145,8 @@ class SummaryEpochs(Summary):
 
     def add_to_summary(self, step, epochs, overwrite=False):
         
-        if not isinstance(epochs, mne.Epochs):
-            raise TypeError("epochs must be an instance of mne.Epochs")
+        if not isinstance(epochs, BaseEpochs):
+            raise TypeError("epochs must be an instance of mne.BaseEpochs")
         
         if any(((self.summary_df['file_id'] == self.file_id) & (self.summary_df['step'] == step))) and not overwrite:
             print(f"File {self.file_id} and step {step} already exist in the summary. Use overwrite=True to overwrite the existing entry.")
@@ -197,23 +211,30 @@ def run_preprocessing(input_dir,
                       bids_extension='.vhdr',
                       bids_datatype='eeg',
                       bids_suffix='eeg',
-                      preprocessed_file_pattern='*-preproc.fif',
+                      processed_file_pattern='*-preproc.fif',
                       data_selection_method="all",
                       drop_electrodes=None,
                       picks='eeg',
+                      reference_channels=None,
                       crop_times=None,
-                      crop_from_begignning=None,
+                      crop_from_beginnning=None,
                       crop_from_end=None,
                       resample_freq=None,
                       stim_channels_to_annotations=True,
                       montage=None,
-                      create_report=True,
                       save_log=True,
-                      save_data=True,
                       save_report=True,
                       save_summary=True,
-                      high_pass_freq=None,
-                      low_pass_freq=None,
+                      l_freq=0.10,
+                      h_freq=40,
+                      l_trans_bandwidth=0.1,
+                      h_trans_bandwidth=10,
+                      cfg_bad_channels_detection=None,
+                      cfg_glitches_detection=None,
+                      cfg_target_pca=None,
+                      cfg_artifacts_detection=None,
+                      cfg_spline_segments=None,
+                      cfg_spline_channels=None,
                       n_jobs=-1,
                       ):
     
@@ -226,7 +247,7 @@ def run_preprocessing(input_dir,
         from apice.io import get_files_to_process
         files = get_files_to_process(input_dir=input_dir,
                                     output_dir=output_dir,
-                                    preprocessed_file_pattern=preprocessed_file_pattern,
+                                    processed_file_pattern=processed_file_pattern,
                                     data_selection_method=data_selection_method,
                                     )
     else:
@@ -241,7 +262,7 @@ def run_preprocessing(input_dir,
                                           suffix=bids_suffix,
                                           extension=bids_extension,
                                           output_dir=output_dir,
-                                          preprocessed_file_pattern=preprocessed_file_pattern,
+                                          processed_file_pattern=processed_file_pattern,
                                           data_selection_method=data_selection_method,
                                           )
     print(f"\nNumber of files to process: {len(files)}\n")
@@ -256,8 +277,10 @@ def run_preprocessing(input_dir,
             # Load raw data
             if not input_dir_bids:
                 raw = mne.io.read_raw(file, preload=False, verbose=False)
+                file_name = file.stem
             else:
                 raw = mne_bids.read_raw_bids(file)
+                file_name = file.basename.replace(bids_extension, '')
 
             # Run initial preprocessing steps
             raw = preprocess_initial_steps(
@@ -265,7 +288,7 @@ def run_preprocessing(input_dir,
                                         drop_electrodes=drop_electrodes,
                                         picks=picks,
                                         crop_times=crop_times,
-                                        crop_from_begignning=crop_from_begignning,
+                                        crop_from_beginnning=crop_from_beginnning,
                                         crop_from_end=crop_from_end,
                                         resample_freq=resample_freq,
                                         stim_channels_to_annotations=stim_channels_to_annotations,
@@ -275,40 +298,128 @@ def run_preprocessing(input_dir,
             # Run APICE default preprocessing pipeline
             _ = preprocess_apice_default(
                                         raw,
+                                        file_name=file_name,
                                         output_dir=output_dir,
-                                        create_report=create_report,
+                                        create_report=save_report,
                                         save_log=save_log,
-                                        save_data=save_data,
+                                        save_data=True,
                                         save_report=save_report,
                                         save_summary=save_summary,
-                                        high_pass_freq=high_pass_freq,
-                                        low_pass_freq=low_pass_freq,
+                                        reference_channels=reference_channels,
+                                        l_freq=l_freq,
+                                        h_freq=h_freq,
+                                        l_trans_bandwidth=l_trans_bandwidth,
+                                        h_trans_bandwidth=h_trans_bandwidth,
+                                        cfg_bad_channels_detection=cfg_bad_channels_detection,
+                                        cfg_glitches_detection=cfg_glitches_detection,
+                                        cfg_target_pca=cfg_target_pca,
+                                        cfg_artifacts_detection=cfg_artifacts_detection,
+                                        cfg_spline_segments=cfg_spline_segments,
+                                        cfg_spline_channels=cfg_spline_channels,
                                         n_jobs=n_jobs,
                                         )
+            
+            plt.close('all')
             
         except Exception as e:
             print(f"Error processing file {file}: {e}")
             continue
             
 
+def run_segmentation(input_dir, 
+                     output_dir, 
+                     kwargs_events_from_annotations_for_segmentation, 
+                     event_time_window,
+                     processed_file_pattern='*-epo.fif',
+                     data_selection_method="all",
+                     l_freq=None,
+                     h_freq=None,
+                     l_trans_bandwidth=0.1,
+                     h_trans_bandwidth=10,
+                     baseline=None, 
+                     kwargs_events_from_annotations_for_metadata=None,
+                     kwargs_make_metadata=None,                             
+                     evoked_by=True,
+                     save_log=True,
+                     save_epochs=True,
+                     save_only_good_epochs=False,
+                     save_evoked=True,
+                     save_report=True,
+                     save_summary=True,
+                     save_cfg=True,
+                     set_reference=None,
+                     cfg_define_bcbt_epochs=None,
+                     cfg_spline_channels=None,  
+                     cfg_bad_epochs=None,              
+                     n_jobs=-1,
+                     ):
+
+    # Initialize output folders
+    output_dir = Path(output_dir)
+    output_dir.mkdir(exist_ok=True)
+    
+    # Get all files to process
+    from apice.io import get_files_to_process
+    files = get_files_to_process(input_dir=input_dir,
+                                output_dir=output_dir,
+                                processed_file_pattern=processed_file_pattern,
+                                data_selection_method=data_selection_method,
+                                )
+
+    print(f"\nNumber of files to process: {len(files)}\n")
+
+    for file in files:
+
+        print(f"Processing file: {file}")
+
+        try:
+        
+            # Load raw data
+            raw = load_rawapice(file)
+
+            # Run segmentation pipeline
+            _ = segment_default_pipeline(raw, 
+                        kwargs_events_from_annotations_for_segmentation, 
+                        event_time_window,
+                        file_name=file.stem,
+                        l_freq=l_freq,
+                        h_freq=h_freq,
+                        l_trans_bandwidth=l_trans_bandwidth,
+                        h_trans_bandwidth=h_trans_bandwidth,
+                        baseline=baseline, 
+                        kwargs_events_from_annotations_for_metadata=kwargs_events_from_annotations_for_metadata,
+                        kwargs_make_metadata=kwargs_make_metadata,                             
+                        evoked_by=evoked_by,
+                        output_dir=output_dir,
+                        save_log=save_log,
+                        save_epochs=save_epochs,
+                        save_only_good_epochs=save_only_good_epochs,
+                        save_evoked=save_evoked,
+                        save_report=save_report,
+                        save_summary=save_summary,
+                        save_cfg=save_cfg,
+                        set_reference=set_reference,
+                        cfg_define_bcbt_epochs=cfg_define_bcbt_epochs,
+                        cfg_spline_channels=cfg_spline_channels,  
+                        cfg_bad_epochs=cfg_bad_epochs,              
+                        n_jobs=n_jobs,
+                        )
+            
+            plt.close('all')
+            
+        except Exception as e:
+            print(f"Error processing file {file}: {e}")
+            continue
 
 
 # %% Sub Functions
 
-# Libraries and dependencies
-import mne
-import apice
-from apice.artifacts_rejection import (BadElectrodes, Motion, Jump)
-from apice.artifacts_structure import (DefineBTBC, Artifacts, annotations_to_rejection_matrix, plot_percentage_of_bad_data_across_sensors)
-from apice.artifacts_correction import (TargetPCA, SegmentSphericalSplineInterpolation, ChannelsSphericalSplineInterpolation)
-from apice.filter import Filter
-from apice.parameters import Filters
 
 def preprocess_initial_steps(raw,
                           drop_electrodes=None,
                           picks='eeg',
                           crop_times=None,
-                          crop_from_begignning=None,
+                          crop_from_beginnning=None,
                           crop_from_end=None,
                           resample_freq=None,
                           stim_channels_to_annotations=True,
@@ -328,9 +439,13 @@ def preprocess_initial_steps(raw,
     print('Starting initial preprocessing steps\n')
     print(f"Processing date and time: {datetime.now()}\n\n")
 
+    if raw.info['meas_date'] is None:
+        print("raw.info['meas_date'] is None. Setting it to the current date and time.")
+        raw.set_meas_date(datetime.now(tz=timezone.utc))
+
     # STIM CHANNELS TO ANNOTATIONS ------------------------------------------------------------------------------------------
     if stim_channels_to_annotations and "stim" in np.unique(raw.get_channel_types()):
-        apice.io.Raw.stim_channels_to_annotations(raw)
+        convert_stim_channels_to_annotations(raw)
 
     # DROPPING ELECTRODES -----------------------------------------------------------------------------------------------
     if drop_electrodes is not None:
@@ -343,10 +458,10 @@ def preprocess_initial_steps(raw,
     # CROP TIMES -----------------------------------------------------------------------------------------------
     if crop_times is not None:
         raw.crop(tmin=crop_times[0], tmax=crop_times[1])
-    if crop_from_begignning is not None:
-            raw.crop(tmin=crop_from_begignning, tmax=None)
+    if crop_from_beginnning is not None:
+            raw.crop(tmin=crop_from_beginnning, tmax=None)
     if crop_from_end is not None:
-            raw.crop(tmin=None, tmax=raw.times[-1]-crop_from_end)    
+            raw.crop(tmin=0, tmax=raw.times[-1]-crop_from_end)    
 
     # RESAMPLE -----------------------------------------------------------------------------------------------
     if resample_freq is not None:
@@ -374,7 +489,7 @@ def preprocess_initial_steps(raw,
     
     # END TIME ------------------------------------------------------------------------------------------------
     sim_time_end = timedelta(seconds=np.round(time.time() - sim_time_start))
-    print('\nTotal processing time :', str(sim_time_end), 'in hh:mm:ss')
+    print(f"\nInitial preprocessing steps completed in: {sim_time_end}, in hh:mm:ss")
     print('=============================================\n')
         
 
@@ -384,13 +499,25 @@ def preprocess_initial_steps(raw,
 def preprocess_apice_default(raw, 
                              preprocessed_data_suffix='-preproc',
                              output_dir=None,
+                             file_name=None,
                              create_report=True,
                              save_log=True,
                              save_data=True,
                              save_report=True,
                              save_summary=True,
-                             high_pass_freq=None,
-                             low_pass_freq=None,
+                             save_cfg=True,
+                             reference_channels=None,
+                             l_freq=0.10,
+                             h_freq=40,
+                             l_trans_bandwidth=0.1,
+                             h_trans_bandwidth=10,
+                             cfg_define_bcbt_raw=None,
+                             cfg_bad_channels_detection=None,
+                             cfg_glitches_detection=None,
+                             cfg_target_pca=None,
+                             cfg_artifacts_detection=None,
+                             cfg_spline_segments=None,
+                             cfg_spline_channels=None,
                              n_jobs=-1,
                              ):
     
@@ -404,12 +531,12 @@ def preprocess_apice_default(raw,
         - save_data (bool): Whether to save the preprocessed raw data (default: True).
         - save_report (bool): Whether to save the preprocessing report (default: True).
         - save_summary (bool): Whether to save the summary of artifacts detected and corrected during preprocessing (default: True).
-        - high_pass_freq (float): The high-pass filter frequency in Hz. If None, the default value from Filters.high_pass_freq will be used.
-        - low_pass_freq (float): The low-pass filter frequency in Hz. If None, the default value from Filters.low_pass_freq will be used.
+        - l_freq (float): The high-pass filter frequency in Hz. If None, the default value from Filters.l_freq will be used.
+        - h_freq (float): The low-pass filter frequency in Hz. If None, the default value from Filters.h_freq will be used.
         - drop_electrodes (list of str): List of electrode names to remove from the data (default: None). 
         - picks (str or array_like or slice): Input for raw.pick(). If picks is provided, only the specified electrodes will be kept and all others will be dropped.
         - crop_times (tuple of float): Tuple specifying the start and end times (in seconds) to crop the raw data (default: None).
-        - crop_from_begignning (float): Time in seconds to crop from the beginning of the raw data (default: None).
+        - crop_from_beginnning (float): Time in seconds to crop from the beginning of the raw data (default: None).
         - crop_from_end (float): Time in seconds to crop from the end of the raw data (default: None).
         - n_jobs (int): The number of parallel jobs to run for computationally intensive steps (default: -1, which means using all available cores).
 
@@ -439,22 +566,55 @@ def preprocess_apice_default(raw,
     if output_dir is None and (save_log or save_data or save_report or save_summary):
         raise ValueError("output_dir must be provided if any of the saving options is True")
     
+    # Check that file_name is provided if any of the saving options is True, to use as part of the file name for the saved files
+    if file_name is None and (save_log or save_data or save_report or save_summary):
+        raise ValueError("file_name must be provided if any of the saving options is True, to use as part of the file name for the saved files")
+    
     # Check the filter frequencies
-    if high_pass_freq is None:
-        high_pass_freq=Filters.high_pass_freq
-        print(f"Warning: High pass frequency not provided. Using default value: {high_pass_freq} Hz")
+    if l_freq is None:
+        l_freq=0.1
+        print(f"Warning: High pass frequency not provided. Using default value: {l_freq} Hz")
         
-    # Get file name without extension to use as file_id in summary and report title 
-    file_name = Path(raw.filenames[0]).stem
+    if isinstance(reference_channels, str):
+        reference_channels = [reference_channels]
+    # check that reference channels are in raw
+    if reference_channels is not None:
+        for ch in reference_channels:
+            if ch not in raw.ch_names:
+                print(f"Warning:Reference channel {ch} not found in raw data channels")
+
+    # Get default configurations if not provided or load it if provided as path to a json file
+    cfg_define_bcbt_raw = get_cfg(cfg_define_bcbt_raw, 'define_bcbt_raw_config.json')
+    cfg_bad_channels_detection = get_cfg(cfg_bad_channels_detection, 'detect_bad_channels_config.json')
+    cfg_glitches_detection = get_cfg(cfg_glitches_detection, 'detect_artifacts_glitches_config.json')
+    cfg_target_pca = get_cfg(cfg_target_pca, 'correction_target_pca_config.json')
+    cfg_artifacts_detection = get_cfg(cfg_artifacts_detection, 'detect_artifacts_all_config.json')
+    cfg_spline_segments = get_cfg(cfg_spline_segments, 'correction_spline_segments_config.json')
+    cfg_spline_channels = get_cfg(cfg_spline_channels, 'correction_spline_channels_config.json')    
+    
+    # for each configuration for correction set n_jobs to the value provided in the function argument
+    cfg_spline_segments['n_jobs'] = n_jobs
+    cfg_spline_channels['n_jobs'] = n_jobs
     
     # Create output folder if it does not exist
     if output_dir is not None:
         output_dir = Path(output_dir)
         output_dir.mkdir(exist_ok=True)
-        output_dir_reports = output_dir / "reports"
-
+        if save_summary:
+            output_dir_summary = output_dir / "summary"
+            output_dir_summary.mkdir(exist_ok=True)
+        if save_report:
+            output_dir_reports = output_dir / "reports"
+            output_dir_reports.mkdir(exist_ok=True)
+        if save_cfg:
+            output_dir_cfgs = output_dir / "cfgs"
+            output_dir_cfgs.mkdir(exist_ok=True)
+        if save_log:
+            output_dir_logs = output_dir / "logs"
+            output_dir_logs.mkdir(exist_ok=True)
+    
     # Initialize object for logging
-    logger = StdOutLogger(output_dir_reports, file_name)
+    if save_log: logger = StdOutLogger(output_dir_logs, file_name)
         
     # Preprocessing start time
     sim_time_start = time.time()
@@ -463,88 +623,175 @@ def preprocess_apice_default(raw,
     print(f"Processing date and time: {datetime.now()}\n\n")
 
     # Initialize object tracking the summary of artifacts
-    summary = SummaryPreprocessing(output_dir_reports, file_name, try_loading=False)
+    if save_summary:
+        summary = SummaryPreprocessing(output_dir_summary, file_name, try_loading=False)
 
     # Initialize reports
     if create_report:
         report = mne.Report(title=file_name)
+    else:
+        report = None
 
     # Save log if True
     if save_log: logger.redirect_stdout_to_file(restore=True)
 
     # FILTER -----------------------------------------------------------------------------------------------
-    Filter(raw,
-            high_pass_freq=high_pass_freq,
-            low_pass_freq=low_pass_freq, 
-            n_jobs=n_jobs)
+    Filter(raw, l_freq=l_freq, h_freq=h_freq, l_trans_bandwidth=l_trans_bandwidth, h_trans_bandwidth=h_trans_bandwidth, n_jobs=n_jobs)
 
-    # add notch filtering
 
-    # ARTIFACT DETECTION ------------------------------------------------------------------------------
+    # ARTIFACT DETECTION AND CORRECTION -----------------------------------------------------------------------------
 
     # Initialize artifacts structure
-    raw.artifacts = Artifacts(raw)
-    annotations_to_rejection_matrix(raw)
+    raw = RawAPICE(raw, **cfg_define_bcbt_raw)
+
     if create_report:
-        report.add_raw(raw, 
-                        title="Raw Data", 
-                        psd=True, 
-                        butterfly=False, 
-                        replace=True, 
-                        )
+        try:
+            report.add_raw(raw, 
+                            title="Raw Data", 
+                            psd=False, 
+                            butterfly=False, 
+                            replace=True, 
+                            )
+        except Exception as e:
+            print(f"Warning: Could not add raw data to report: {e}")
+        
+        # Add PSD
+        if h_freq is None:
+            fmax = raw.info['sfreq'] / 2
+        else:
+            fmax = h_freq
+        if reference_channels is not None:
+            exclude = reference_channels
+        else:
+            exclude = []
+        try:
+            fig = raw.compute_psd(method='welch',fmax=fmax,exclude=exclude).plot()
+            report.add_figure(fig, "PSD", section="Raw Data", replace=True)
+        except Exception as e:
+            print(f"Warning: Could not add raw PSD to report: {e}")
+
+        # Add events
+        try:
+            events, event_id = mne.events_from_annotations(raw)
+            if (len(events) > 0) and (len(events)<30):  # only add events to the report if there are events and if there are not too many events (otherwise the report gets too heavy and does not open properly)
+                report.add_events(events=events, title='Events from "annotations"', sfreq=raw.info['sfreq'], section="Raw Data", replace=True)
+            else:                
+                print(f"Warning: Not adding events to report because there are {len(events)} events, which is more than the threshold of 30 events.")
+        except Exception as e:
+            print(f"Warning: Could not add events to report: {e}")
+
+
+    # Detect bad channels
+    raw.detect_bad_channels(cfg_bad_channels_detection=cfg_bad_channels_detection)
+    raw.deal_with_reference_channels(reference_channels)
+    if save_summary:
+        summary.add_to_summary('artifacts_detection_BadElectrodes', raw, overwrite=True)
+
+    # Detect glitches
+    raw.detect_glitches(cfg_glitches_detection=cfg_glitches_detection)
+    raw.deal_with_reference_channels(reference_channels)
+    if save_summary:
+        summary.add_to_summary('artifacts_detection_Glitches', raw, overwrite=True)
+
+    # Correct glitches
+    raw.correct_target_pca(cfg_target_pca=cfg_target_pca)
+    Filter(raw, l_freq=l_freq, h_freq=None, l_trans_bandwidth=l_trans_bandwidth, h_trans_bandwidth=h_trans_bandwidth, n_jobs=n_jobs)
+    if save_summary:
+        summary.add_to_summary('artifacts_correction_TargetPCA', raw, overwrite=True)
 
     # Detect artifacts
-    raw, summary = detect_artifacts(raw, summary=summary)
+    raw.detect_artifacts(cfg_artifacts_detection=cfg_artifacts_detection)
+    raw.deal_with_reference_channels(reference_channels)
+    if save_summary:
+        summary.add_to_summary('artifacts_detection_Artifacts', raw, overwrite=True)
 
     # Create a figure to visualize the artifact structure
-    fig = DefineBTBC.plot_artifact_structure(raw, color_scheme='jet')    
     if create_report:
-        report.add_figure(fig, "Artifacts Matrix", section="Raw Data", replace=True)
+        try:
+            fig = raw.plot_artifact_structure(color_scheme='jet')    
+            report.add_figure(fig, "Artifacts Matrix", section="Raw Data", replace=True)
+        except Exception as e:
+            print(f"Warning: Could not add raw artifacts matrix to report: {e}")
 
     # Add topomap of bad electrodes
-    fig = plot_percentage_of_bad_data_across_sensors(raw)
     if create_report:
-        report.add_figure(fig, "Bad data across electrodes", section="Raw Data", replace=True)
+        try:
+            fig = raw.plot_percentage_of_bad_data_across_sensors()
+            report.add_figure(fig, "Bad data across electrodes", section="Raw Data", replace=True)
+        except Exception as e:
+            print(f"Warning: Could not add raw bad-data topomap to report: {e}")
     
-    # ARTIFACT CORRECTION ------------------------------------------------------------------------------
-    raw, summary = correct_artifacts(raw, n_jobs=n_jobs, summary=summary)
+    # Correct artifacts using spherical spline interpolation per segment
+    raw.correct_spline_segments(cfg_spline_segments=cfg_spline_segments)
+    Filter(raw, l_freq=l_freq, h_freq=None, l_trans_bandwidth=l_trans_bandwidth, h_trans_bandwidth=h_trans_bandwidth, n_jobs=n_jobs)
+    if save_summary:
+        summary.add_to_summary('artifacts_correction_Segments', raw, overwrite=True)
+
+    # Correct channels using spherical spline interpolation
+    raw.correct_spline_channels(cfg_spline_channels=cfg_spline_channels)
+    if save_summary:
+        summary.add_to_summary('artifacts_correction_BadChannels', raw, overwrite=True)
+
+    # Re-detect bad data after correction to check if there are still bad channels or time segments that need to be marked as bad after the correction
+    raw.detect_artifacts(cfg_artifacts_detection=cfg_artifacts_detection)
+    raw.deal_with_reference_channels(reference_channels)    
+    if save_summary:
+        summary.add_to_summary('artifacts_detection_ArtifactsPostCorrection', raw, overwrite=True)
+
     if create_report:
-        report.add_raw(raw, 
-                        title="Preprocessed Raw Data", 
-                        psd=False, 
-                        butterfly=True, 
-                        scalings=50e-6, 
-                        replace=True,
-                        topomap_kwargs={"color_scheme": "jet"}
-                        )
+        try:
+            report.add_raw(raw, 
+                            title="Preprocessed Raw Data", 
+                            psd=False, 
+                            butterfly=True, 
+                            scalings=50e-6, 
+                            replace=True,
+                            topomap_kwargs={"color_scheme": "jet"}
+                            )
+        except Exception as e:
+            print(f"Warning: Could not add preprocessed raw data to report: {e}")
     
-    # Add PSD
-    fig = mne.viz.plot_raw_psd(raw, 
-                                fmax=Filters.low_pass_freq, 
-                                show=False)
-    if create_report:
-        report.add_figure(fig, "PSD", section="Preprocessed Raw Data", replace=True)
+        # Add PSD
+        if h_freq is None:
+            fmax = raw.info['sfreq'] / 2
+        else:
+            fmax = h_freq
+        if reference_channels is not None:
+            exclude = reference_channels
+        else:
+            exclude = []
+        try:
+            fig = raw.compute_psd(method='welch',fmax=fmax,exclude=exclude).plot()
+            report.add_figure(fig, "PSD", section="Preprocessed Raw Data", replace=True)
+        except Exception as e:
+            print(f"Warning: Could not add preprocessed PSD to report: {e}")
     
     # Create a figure to visualize the artifact structure
-    fig = DefineBTBC.plot_artifact_structure(raw, color_scheme='jet')
     if create_report:
-        report.add_figure(fig, "Artifacts Matrix", section="Preprocessed Raw Data", replace=True)
+        try:
+            fig = raw.plot_artifact_structure(color_scheme='jet')
+            report.add_figure(fig, "Artifacts Matrix", section="Preprocessed Raw Data", replace=True)
+        except Exception as e:
+            print(f"Warning: Could not add preprocessed artifacts matrix to report: {e}")
 
     # Add topomap of bad electrodes
-    fig = plot_percentage_of_bad_data_across_sensors(raw)
     if create_report:
-        report.add_figure(fig, "Bad data across electrodes", section="Preprocessed Raw Data", replace=True)
+        try:
+            fig = raw.plot_percentage_of_bad_data_across_sensors()
+            report.add_figure(fig, "Bad data across electrodes", section="Preprocessed Raw Data", replace=True)
+        except Exception as e:
+            print(f"Warning: Could not add preprocessed bad-data topomap to report: {e}")
 
 
     # EXPORT DATA -----------------------------------------------------------------------------------------------
     
     # Save preprocessed raw
     if save_data:
-        apice.io.Raw.export(raw, file_name, output_dir, data_suffix=preprocessed_data_suffix)
+        raw.export(file_name, output_dir, data_suffix=preprocessed_data_suffix)
 
     # Save summary file
     if save_summary:
-        output_dir_reports.mkdir(exist_ok=True)
+        output_dir_summary.mkdir(exist_ok=True)
         summary.save()
 
     # Save report
@@ -553,10 +800,24 @@ def preprocess_apice_default(raw,
         print("Saving report")
         full_path = output_dir_reports / (file_name + preprocessed_data_suffix + ".html")
         report.save(fname=full_path, open_browser=False, overwrite=True)
-    
+
+    # Save the configurations used for preprocessing
+    if save_cfg:
+        cfg_to_save = {
+            "cfg_bad_channels_detection": cfg_bad_channels_detection,
+            "cfg_glitches_detection": cfg_glitches_detection,
+            "cfg_target_pca": cfg_target_pca,
+            "cfg_artifacts_detection": cfg_artifacts_detection,
+            "cfg_spline_segments": cfg_spline_segments,
+            "cfg_spline_channels": cfg_spline_channels,
+            }
+        for cfg_name, cfg in cfg_to_save.items():
+            with open(output_dir_cfgs / f"{file_name}_{cfg_name}.json", 'w') as f:
+                json.dump(cfg, f, indent=4)
+
     # Preprocessing end time
     sim_time_end = timedelta(seconds=np.round(time.time() - sim_time_start))
-    print('\nTotal processing time :', str(sim_time_end), 'in hh:mm:ss')
+    print(f"\nAPICE default preprocessing pipeline completed in: {sim_time_end}, in hh:mm:ss")
     print('=============================================\n')
     
     if save_log:
@@ -568,19 +829,28 @@ def preprocess_apice_default(raw,
 def segment_default_pipeline(raw, 
                    kwargs_events_from_annotations_for_segmentation, 
                    event_time_window,
-                   high_pass_freq=None,
-                   low_pass_freq=None,
+                   file_name=None,
+                   l_freq=None,
+                   h_freq=None,
+                   l_trans_bandwidth=0.1,
+                   h_trans_bandwidth=10,
                    baseline=None, 
                    kwargs_events_from_annotations_for_metadata=None,
                    kwargs_make_metadata=None,                             
-                   evoked_by_event_type=True,
+                   evoked_by="all",
                    output_dir=None,
+                   create_report=True,
                    save_log=True,
                    save_epochs=True,
+                   save_only_good_epochs=False,
                    save_evoked=True,
                    save_report=True,
                    save_summary=True,
+                   save_cfg=True,
                    set_reference=None,
+                   cfg_define_bcbt_epochs=None,
+                   cfg_spline_channels=None,  
+                   cfg_bad_epochs=None,              
                    n_jobs=-1,
                    ):
 
@@ -590,6 +860,10 @@ def segment_default_pipeline(raw,
     if not isinstance(raw, mne.io.BaseRaw):
         raise TypeError("raw must be an instance of mne.io.Raw")
     
+    # Check that raw is an instance of RawAPICE, which is required for the segmentation pipeline
+    if not isinstance(raw, RawAPICE):
+        raise TypeError("raw must be an instance of RawAPICE. Please run the preprocess_apice_default function before segmentation to ensure raw is an instance of RawAPICE and has the necessary attributes for segmentation.")    
+    
     # Check that raw has a montage
     if raw.get_montage() is None:
         raise ValueError("raw must have a montage. Please set the montage before preprocessing.")
@@ -597,24 +871,50 @@ def segment_default_pipeline(raw,
     # Check that output_dir is provided if any of the saving options is True
     if output_dir is None and (save_log or save_epochs or save_evoked or save_report or save_summary):
         raise ValueError("output_dir must be provided if any of the saving options is True")
+
+    # Check that file_name is provided if any of the saving options is True, to use as part of the file name for the saved files
+    if file_name is None and (save_log or save_epochs or save_evoked or save_report or save_summary):
+        raise ValueError("file_name must be provided if any of the saving options is True, to use as part of the file name for the saved files")
+
+    # Get the default configurations if not provided or load it if provided as path to a json file
+    cfg_define_bcbt_epochs = get_cfg(cfg_define_bcbt_epochs, 'define_bcbt_epochs_config.json')
+    cfg_spline_channels = get_cfg(cfg_spline_channels, 'correction_spline_channels_config.json')
+    cfg_bad_epochs = get_cfg(cfg_bad_epochs, 'detect_bad_epochs_config.json')
     
-    # Get file name without extension to use as file_id in summary and report title
-    file_name = Path(raw.filenames[0]).stem
+    # for each configuration for correction set n_jobs to the value provided in the function argument
+    cfg_spline_channels['n_jobs'] = n_jobs
+
     
     # Create output folder if it does not exist
     if output_dir is not None:
         output_dir = Path(output_dir)
         output_dir.mkdir(exist_ok=True)
-        output_dir_reports = output_dir / "reports"
+        if save_cfg:
+            output_dir_cfgs = output_dir / "cfgs"
+            output_dir_cfgs.mkdir(exist_ok=True)
+        if save_report:
+            output_dir_reports = output_dir / "reports"
+            output_dir_reports.mkdir(exist_ok=True)
+        if save_log:
+            output_dir_logs = output_dir / "logs"
+            output_dir_logs.mkdir(exist_ok=True)
+        if save_summary:
+            output_dir_summary = output_dir / "summary"
+            output_dir_summary.mkdir(exist_ok=True)
 
     # Initialize object tracking the summary of artifacts
-    summary = SummaryEpochs(output_dir_reports, file_name, try_loading=False)
+    if save_summary:
+        summary = SummaryEpochs(output_dir_summary, file_name, try_loading=False)
 
     # Initialize object for logging
-    logger = StdOutLogger(output_dir_reports, file_name)
+    if save_log: 
+        logger = StdOutLogger(output_dir_logs, file_name)
         
     # Initialize reports
-    report = mne.Report(title=file_name)
+    if create_report:
+        report = mne.Report(title=file_name)
+    else:
+        report = None
 
     # Save log if True
     if save_log: logger.redirect_stdout_to_file(restore=True)
@@ -625,18 +925,15 @@ def segment_default_pipeline(raw,
     print('Starting APICE default segmentation pipeline')
     print(f"Segmentation date and time: {datetime.now()}\n\n")
 
-    # Initialize artifacts structure
-    if not hasattr(raw, 'artifacts'):
-        raw.artifacts = Artifacts(raw)
-        annotations_to_rejection_matrix(raw)
 
     # FILTER -----------------------------------------------------------------------------------------------
-    Filter(raw,
-            high_pass_freq=high_pass_freq,
-            low_pass_freq=low_pass_freq, 
-            n_jobs=n_jobs)
+    Filter(raw, l_freq=l_freq, h_freq=h_freq, l_trans_bandwidth=l_trans_bandwidth, h_trans_bandwidth=h_trans_bandwidth, n_jobs=n_jobs)
 
     # SEGMENTATION ----------------------------------------------------------------------------------------------
+    
+    # raw_=raw.copy()
+    # raw_.annotate_bads(data=False, corrected=False)
+    # raw_.plot(n_channels=raw_.info['nchan'], duration=100)
     
     if kwargs_events_from_annotations_for_metadata:
         if kwargs_make_metadata is None:
@@ -666,38 +963,85 @@ def segment_default_pipeline(raw,
                                    n_jobs=n_jobs,
                                    baseline=baseline,
                                    metadata=metadata,
-                                   evoked_by_event_type=evoked_by_event_type,
+                                   evoked_by=evoked_by,
                                    set_reference=set_reference,
                                    summary=summary,
+                                   cfg_define_bcbt_epochs=cfg_define_bcbt_epochs,
+                                   cfg_spline_channels=cfg_spline_channels,
+                                   cfg_bad_epochs=cfg_bad_epochs,
                                    )
     
+    # n_channels = epochs.info['nchan']
+    # epoch_colors = [['black' for i in range(n_channels)] for i in range(len(epochs))]
+    # for i in range(len(epochs)):
+    #     if epochs.artifacts.BE[i]:
+    #         epoch_colors[i] = ['red' for i in range(n_channels)]
+    #     else:
+    #         epoch_colors[i] = ['black' if not epochs.artifacts.BC[i][j,0] else 'blue' for j in range(n_channels)]
+    # epochs.plot(epoch_colors=epoch_colors)
+
     # Add epochs in report
-    report.add_epochs(epochs, "Epochs", psd=True, replace=True)
+    if create_report:
+        try:
+            report.add_epochs(epochs, "Epochs", psd=True, replace=True)
+        except Exception as e:
+            print(f"Warning: Could not add epochs to report: {e}")
     
     # Add epochs artifacts matrix
-    fig = DefineBTBC.plot_artifact_structure(epochs, color_scheme='jet')
-    report.add_figure(fig, "Artifacts Matrix", section="Epochs", replace=True)
+    if create_report:
+        try:
+            fig = epochs.plot_artifact_structure(color_scheme='jet')
+            report.add_figure(fig, "Artifacts Matrix", section="Epochs", replace=True)
+        except Exception as e:
+            print(f"Warning: Could not add epochs artifacts matrix to report: {e}")
 
     # Add topomap of bad electrodes
-    fig = plot_percentage_of_bad_data_across_sensors(epochs)
-    report.add_figure(fig, "Bad data across electrodes", section="Epochs", replace=True)
+    if create_report:
+        try:
+            fig = epochs.plot_percentage_of_bad_data_across_sensors()
+            report.add_figure(fig, "Bad data across electrodes", section="Epochs", replace=True)
+        except Exception as e:
+            print(f"Warning: Could not add epochs bad-data topomap to report: {e}")
 
     # Add evokeds in the report
-    report.add_evokeds(evokeds, titles=None, replace=True)
+    if create_report:
+        if evoked_by is None:
+            evokeds_to_add = []
+        elif evoked_by == "all":
+            evokeds_to_add = dict(all=evokeds)
+        else:                
+            evokeds_to_add = evokeds
+        for key, evoked in evokeds_to_add.items():
+            try:
+                report.add_evokeds(evoked, titles=key, replace=True)
+            except Exception as e:
+                print(f"Warning: Could not add evoked responses {key} to report: {e}")
+                try:
+                    fig = evoked.plot()
+                    report.add_figure(fig, f"Evoked responses {key}", section="Evoked responses", replace=True)
+                except Exception as fig_err:
+                    print(f"Warning: Could not add fallback evoked figure {key} to report: {fig_err}")
 
 
     # EXPORT DATA -----------------------------------------------------------------------------------------------
     
     # Save epochs 
     if save_epochs:
-        apice.io.Epochs.export(epochs, file_name, output_dir)
+        file_name_epochs = (file_name + '-epo.fif')
+        if save_only_good_epochs:
+            epochs_good = epochs.copy()
+            epochs_good.remove_bad_epochs()
+            epochs_good.export(file_name_epochs, output_dir)
+        else:
+            epochs.export(file_name_epochs, output_dir)
 
     # Save evoked responses
     if save_evoked:
-        file_name_evoked = (file_name + '-erp.fif')
 
-        if not evoked_by_event_type:
-            file_name_evoked = (file_name + '-erp.fif')
+        if evoked_by is None:
+            print(f"No evoked responses to save for {file_name} since evoked_by is set to None.")
+        elif evoked_by == "all":
+            file_name_evoked = (file_name + '-ave.fif')
             folder_path = output_dir / 'erp'
             folder_path.mkdir(parents=True, exist_ok=True)
             full_path = folder_path / file_name_evoked
@@ -705,16 +1049,20 @@ def segment_default_pipeline(raw,
             evokeds.save(full_path, overwrite=True)
             print(f"Closing {full_path}")
         else:
-            for i in np.arange(len(evokeds)):
-                full_path = output_dir / 'erp' / f"{file_name}_{evokeds[i].comment}.fif"
+            for key, ev in evokeds.items():
+                folder_path = output_dir / 'erp'
+                folder_path.mkdir(parents=True, exist_ok=True)
+                # make the key name a valid file name by removing or replacing characters that are not allowed in file names
+                key_ = "".join(c if c.isalnum() or c in (' ', '_', '-') else '_' for c in key)
+                full_path = folder_path / f"{file_name}_{key_}-ave.fif"
                 print(f"Writing {full_path}")
-                evokeds[i].save(full_path, overwrite=True)
+                ev.save(full_path, overwrite=True)
                 print(f"Closing {full_path}")
             print('[done]')
 
     # Save summary file
     if save_summary:
-        output_dir_reports.mkdir(exist_ok=True)
+        output_dir_summary.mkdir(exist_ok=True)
         summary.save()
 
     # Save report
@@ -723,10 +1071,21 @@ def segment_default_pipeline(raw,
         print("Saving report")
         full_path = output_dir_reports / (file_name + "-epo.html")
         report.save(fname=full_path, open_browser=False, overwrite=True)
+
+    # Save configurations used for segmentation
+    if save_cfg:    
+        cfg_to_save = {
+            "cfg_define_bcbt_epochs": cfg_define_bcbt_epochs,
+            "cfg_spline_channels": cfg_spline_channels,
+            "cfg_bad_epochs": cfg_bad_epochs,
+            }
+        for cfg_name, cfg in cfg_to_save.items():
+            with open(output_dir_cfgs / f"{file_name}_{cfg_name}.json", 'w') as f:
+                json.dump(cfg, f, indent=4)
     
     # Preprocessing end time
     sim_time_end = timedelta(seconds=np.round(time.time() - sim_time_start))
-    print('\nTotal processing time :', str(sim_time_end), 'in hh:mm:ss')
+    print(f"\nAPICE default segmentation pipeline completed in: {sim_time_end}, in hh:mm:ss")
     print('=============================================\n')
     
     if save_log:
@@ -735,113 +1094,65 @@ def segment_default_pipeline(raw,
     return epochs, evokeds, summary, report
 
 
+def get_stim_duration(raw, threshold=0.01):
 
+    stim_data = raw.copy().pick('stim').get_data()    
+    above_baseline = np.where(stim_data > threshold, 1, 0)
+    onsets, durations = get_onset_and_duration(above_baseline)
 
-
-
-def detect_artifacts(raw, summary=None):
-    """
-    Detects various artifacts in EEG data using specified detection algorithms.
-
-    This function applies a series of artifact detection algorithms to the raw EEG data.
-    Each algorithm is configured to use user-defined parameters. The algorithms look for bad electrodes,
-    motion artifacts, jumps in signal, and defines the bad time segments for EEG correction.
-
-    Args:
-        raw (mne.io.Raw): The raw EEG data object that contains the EEG signal and metadata.
-        summary (SummaryPreprocessing, optional): An instance of the SummaryPreprocessing class to track the summary of detected artifacts. Defaults to None.
-
-    Returns:
-        None: This function does not return a value but modifies the raw data object in place
-            to annotate the detected artifacts.
-    """
+    return np.max(durations)
     
-    # Detects bad electrodes based on user-configured parameters
-    BadElectrodes(raw, config=True)
-    if summary is not None:
-        summary.add_to_summary('artifacts_detection_BadElectrodes', raw, overwrite=True)
-
-    # Detects motion artifacts with a specific type set by user-defined parameters
-    Motion(raw, type=1, config=True)
-    if summary is not None:
-        summary.add_to_summary('artifacts_detection_Motion', raw, overwrite=True)
+def convert_stim_channels_to_annotations(raw):
+    # Get a copy of the original annotations
+    df_annotations = raw.annotations.to_data_frame(time_format=None)
     
-    # Detects jumps in the EEG signal using user-configured parameters
-    Jump(raw, config=True)
-    if summary is not None:
-        summary.add_to_summary('artifacts_detection_Jump', raw, overwrite=True)
+    # Convert stim channels to annotations
+    print("\nConverting STIMs to annotations...")
     
-    # Defines bad time segments in the EEG data for further correction, using user-configured parameters
-    DefineBTBC(raw, config=True)
-    if summary is not None:
-        summary.add_to_summary('artifacts_detection_DefineBTBC', raw, overwrite=True)
-
-    if summary is not None:
-        return raw, summary
-    else:
-        return raw
-
-def correct_artifacts(raw, 
-                      n_jobs=-1, 
-                      summary=None,
-                      apply_targetPCA=True,
-                      apply_segment_spherical_spline_interpolation=True,
-                      apply_channels_spherical_spline_interpolation=True,
-                      apply_motion_correction=True,):
-    """
-    Corrects artifacts in EEG data using a series of processing steps.
-
-    This function applies multiple artifact correction techniques including Target PCA, 
-    Spherical Spline Interpolation, and motion artifact correction. It also includes 
-    filtering and baseline rescaling as part of the artifact correction process.
-
-    Parameters:
-    raw : Raw EEG object
-        The raw EEG data to be processed for artifact correction.
-    n_jobs : int
-        Number of core used for the parallel computation. -1 to get all the available cores.
-    summary (SummaryPreprocessing, optional): An instance of the SummaryPreprocessing class to track the summary of corrected artifacts. Defaults to None.
-
-    Returns:
-    None
-    """
- 
-    # Apply Target PCA per electrode
-    if apply_targetPCA:
-        TargetPCA(raw, config=True)
-        Filter(raw,
-            high_pass_freq=Filters.high_pass_freq, 
-            low_pass_freq=[], 
-            n_jobs=n_jobs) 
-        DefineBTBC(raw, config=True)
-        if summary is not None:
-            summary.add_to_summary('artifacts_correction_targetPCA', raw, overwrite=True)
-
-     # Apply Spherical Spline Interpolation fro segmets for artifact correction
-    if apply_segment_spherical_spline_interpolation:
-        SegmentSphericalSplineInterpolation(raw, n_jobs, config=True)
-        Filter(raw, high_pass_freq=Filters.high_pass_freq, low_pass_freq=[], n_jobs=n_jobs)
-        DefineBTBC(raw, config=True)
-        if summary is not None:
-            summary.add_to_summary('artifacts_correction_SegmentsSphericalSpline', raw, overwrite=True)
-
-    # Apply Spherical Spline Interpolation for whole channels
-    if apply_channels_spherical_spline_interpolation:
-        ChannelsSphericalSplineInterpolation(raw, n_jobs, config=True)
-        if summary is not None:
-            summary.add_to_summary('artifacts_correction_ChannelsSphericalSpline', raw, overwrite=True)
+    stims = raw.copy().pick('stim')
     
-    # Detect motion artifacts again after correction
-    if apply_motion_correction:
-        Motion(raw, type=2, keep_rejected_previous=True, config=True)
-        DefineBTBC(raw, config=True)
-        if summary is not None:
-            summary.add_to_summary('artifacts_correction_Motion', raw, overwrite=True)
+    if stims:
 
-    if summary is not None:
-        return raw, summary
-    else:
-        return raw
+        # Detect all events
+        from mne import find_events
+        events = find_events(raw, stim_channel=stims.ch_names, verbose=False)
+        
+        # Assuming event IDs are directly the data values in the stim channel
+        event_ids = np.unique(events[:, 2])  # Unique event identifiers
+        
+        onsets = events[:, 0] / raw.info['sfreq']  # Convert sample indices to times
+        
+        ch_names = [()] * len(events)
+        
+        durations = [get_stim_duration(raw)] * len(events) 
+        
+        event_map = {event_id: f"{stims.ch_names[event_id - 1]}" for event_id in event_ids if event_id < len(raw.ch_names)}
+        
+        descriptions = [event_map[event_id] for event_id in events[:, 2]]
+
+        # Create Annotations object
+        df_annotations_from_stims = pd.DataFrame(dict(onset=onsets, duration=durations, description=descriptions, ch_names=ch_names))
+        
+        # List of DataFrames to combine
+        dfs = [df_annotations, df_annotations_from_stims]
+        
+        # Filter out empty DataFrames
+        dfs = [df for df in dfs if not df.empty]
+        
+        if dfs:
+            # Concatenating DataFrames
+            df_combined = pd.concat(dfs, ignore_index=True)
+
+            # Dropping duplicates and sorting by 'onset'
+            df_final = df_combined.drop_duplicates().sort_values(by="onset").reset_index(drop=True)
+
+            from mne import Annotations 
+            annotations = Annotations(onset=list(df_final["onset"]),
+                                        duration=list(df_final["duration"]),
+                                        description=list(df_final["description"]),
+                                        ch_names=list(df_final["ch_names"]))
+            
+            raw.set_annotations(annotations)
     
 
 def generate_metadata_for_epochs(raw, 
@@ -855,10 +1166,10 @@ def generate_metadata_for_epochs(raw,
                  ):
     
     # Get events, and event ids for segmentation
-    events_segm, event_id_segm = apice.io.Raw.events_from_annotations(raw, **kwargs_events_from_annotations_for_segmentation)
+    events_segm, event_id_segm = mne.events_from_annotations(raw, **kwargs_events_from_annotations_for_segmentation)
     
     # get events and event ids for metadata
-    events_metadata, event_ids_metadata = apice.io.Raw.events_from_annotations(raw, **kwargs_events_from_annotations_for_metadata)
+    events_metadata, event_ids_metadata = mne.events_from_annotations(raw, **kwargs_events_from_annotations_for_metadata)
     
     # make metadata
     metadata_, events, event_id = mne.epochs.make_metadata(
@@ -887,8 +1198,11 @@ def compute_epochs_and_evoked(raw,
                  tmax=0.5, 
                  n_jobs=-1, 
                  baseline=None, 
-                 evoked_by_event_type=True, 
+                 evoked_by="all", 
                  set_reference=None,
+                 cfg_define_bcbt_epochs=None,
+                 cfg_spline_channels=None,
+                 cfg_bad_epochs=None,
                  summary=None):
     """
     Segments continuous EEG data, applies artifact correction, and computes evoked responses.
@@ -908,8 +1222,10 @@ def compute_epochs_and_evoked(raw,
         End time after the event in seconds.
     baseline : tuple, optional
         Time window for baseline correction (start, end) in seconds. Defaults to None.
-    evoked_by_event_type : bool, optional
-        Flag to compute evoked responses by event type. Defaults to True.
+    evoked_by : str, list or None, optional
+        Specifies how to compute evoked responses. Can be "all" to compute a single averaged response,
+        a string or list of strings specifying an event type to compute evoked responses for that event, or None to skip evoked computation.
+        Defaults to "all".
     summary : Summary object, optional
         The summary object to update with segmentation information. Defaults to None.
     set_reference : None or dictionary, optional
@@ -921,9 +1237,13 @@ def compute_epochs_and_evoked(raw,
     evoked : mne.Evoked or list of mne.Evoked
         The evoked response(s), either as a single averaged response or separated by event type.
     """
-    
+    # get the configurations 
+    cfg_define_bcbt_epochs = get_cfg(cfg_define_bcbt_epochs, 'define_bcbt_epochs_config.json')
+    cfg_spline_channels = get_cfg(cfg_spline_channels, 'correction_spline_channels_config.json')
+    cfg_bad_epochs = get_cfg(cfg_bad_epochs, 'detect_bad_epochs_config.json')
+
     # Get events, and event ids
-    events_segm, event_id_segm = apice.io.Raw.events_from_annotations(raw, **kwargs_events_from_annotations)
+    events_segm, event_id_segm = mne.events_from_annotations(raw, **kwargs_events_from_annotations)
     
     # Segment the continuous data into epochs
     karg = dict(reject_by_annotation=False,
@@ -933,26 +1253,24 @@ def compute_epochs_and_evoked(raw,
             preload=True,
             metadata=metadata,
     )
-    epochs = apice.io.Epochs.segment_continuous_data(raw, 
-                                            events_segm, 
-                                            event_id_segm, 
-                                            karg,
-                                            )
+    epochs = raw.segment_continuous_data(events_segm, event_id_segm, karg)
+    epochs.update_artifacts_params(**cfg_define_bcbt_epochs)
     
     # Define BadTimes and BadChannels for the segmented data
-    DefineBTBC(epochs, segmented=True, config=True)
+    epochs.define_bcbt()
     if summary is not None:
         summary.add_to_summary('segmentation_Initial', epochs, overwrite=True)
 
     # Apply spherical spline interpolation for artifact correction and re-define BT and BC after interpolation
-    ChannelsSphericalSplineInterpolation(epochs, n_jobs, config=True)
-    DefineBTBC(epochs, segmented=True, config=True)
+    epochs.correct_spline_channels(cfg_spline_channels=cfg_spline_channels)
     
     # Identify and define bad epochs
-    apice.io.Epochs.define_bad_epochs(epochs, config=True)
+    epochs.define_bad_epochs(bad_data=cfg_bad_epochs['bad_data'], 
+                             bad_time=cfg_bad_epochs['bad_time'], 
+                             bad_channel=cfg_bad_epochs['bad_channel'], 
+                             lim_dist=cfg_bad_epochs['lim_dist'], 
+                             lim_gfp=cfg_bad_epochs['lim_gfp'])
     
-    # Remove bad epochs from the data 
-    apice.io.Epochs.remove_bad_epochs(epochs)
 
     # Re-reference the data if specified by the user
     if set_reference is not None:
@@ -966,75 +1284,30 @@ def compute_epochs_and_evoked(raw,
     # Compute the evoked responses
     print(
         f"\nGetting evoked responses...",
-        f"-\n\t-- by event type: {evoked_by_event_type}"
+        f"-\n\t-- by event type: {evoked_by}"
         )
-    if evoked_by_event_type:
-        evokeds = epochs.average(by_event_type=evoked_by_event_type)
+    # Remove bad epochs from the data 
+    epochs_good = epochs.copy()
+    epochs_good.remove_bad_epochs()
+    if evoked_by is not None:
+        if evoked_by == "all":
+            evokeds = epochs_good.average()
+        else:
+            evokeds = {}
+            for ev in evoked_by:
+                try:
+                   evokeds[ev] = epochs_good[ev].average()
+                except Exception as e:
+                    print(f"Warning: Could not compute evoked response for event type {ev}: {e}")
     else:
-        evokeds = epochs.average()
+        evokeds = None
 
     if summary is not None:
         return epochs, evokeds, summary
     else:
-        return epochs, evokeds
+        return epochs, evokeds, None
 
 
-def get_summary(subject_no, subject_name, raw, df_summary, option='preprocessing'):
-    """
-    Generates a summary of preprocessing, correction, or segmentation for EEG data.
 
-    Parameters:
-    subject_no : int
-        The subject number.
-    subject_name : str
-        The name of the subject.
-    raw : mne.io.Raw or mne.Epochs
-        The Raw or Epochs object containing EEG data and artifacts.
-    df_summary : pandas.DataFrame
-        The DataFrame where the summary will be appended.
-    option : str
-        The type of summary to generate. Options are 'preprocessing', 'correction', and 'segmentation'.
-
-    Returns:
-    df_summary : pandas.DataFrame
-        Updated DataFrame with the new summary information.
-    """
-
-    # Summarize preprocessing steps
-    if option == 'preprocessing':
-        length = raw.times.max()
-        bad_data = np.round(np.sum(raw.artifacts.BCT) / np.size(raw.artifacts.BCT) * 100, 2)
-        bad_channels = np.round(np.sum(raw.artifacts.BC) / np.size(raw.artifacts.BC) * 100, 2)
-        bad_times = np.round(np.sum(raw.artifacts.BT) / np.size(raw.artifacts.BT) * 100, 2)
-        # Append the summary to the DataFrame
-        df_summary.loc[len(df_summary)] = [subject_no, subject_name, length, bad_data, bad_channels, bad_times]
-
-    # Summarize artifact correction steps
-    elif option == 'correction':
-        length = raw.times.max()
-        corrected_data = np.round(np.sum(raw.artifacts.CCT) / np.size(raw.artifacts.CCT) * 100, 2)
-        bad_data = np.round(np.sum(raw.artifacts.BCT) / np.size(raw.artifacts.BCT) * 100, 2)
-        bad_channels = np.round(np.sum(raw.artifacts.BC) / np.size(raw.artifacts.BC) * 100, 2)
-        bad_times = np.round(np.sum(raw.artifacts.BT) / np.size(raw.artifacts.BT) * 100, 2)
-        # Append the summary to the DataFrame
-        df_summary.loc[len(df_summary)] = [subject_no, subject_name, length, corrected_data, bad_data, bad_channels, bad_times]
-                
-    # Summarize segmentation steps
-    elif option == 'segmentation':
-        length = raw.times.max() - raw.times.min()
-        drop_log = np.asarray(raw.drop_log, dtype=list)
-        no_of_epochs = np.shape(drop_log)[0]
-        no_of_remaining_epochs = np.shape(raw._data)[0]
-        
-        corrected_data = np.round(np.sum(raw.artifacts.CCT) / np.size(raw.artifacts.CCT) * 100, 2)
-        bad_data = np.round(np.sum(raw.artifacts.BCT) / np.size(raw.artifacts.BCT) * 100, 2)
-        bad_channels = np.round(np.sum(raw.artifacts.BC) / np.size(raw.artifacts.BC) * 100, 2)
-        bad_times = np.round(np.sum(raw.artifacts.BT) / np.size(raw.artifacts.BT) * 100, 2)
-        bad_epochs = np.round(np.sum(raw.artifacts.BE) / np.size(raw.artifacts.BE) * 100, 2)
-        # Append the summary to the DataFrame
-        df_summary.loc[len(df_summary)] = [subject_no, subject_name, no_of_epochs, no_of_remaining_epochs,
-                                            length, corrected_data, bad_data, bad_channels, bad_times, bad_epochs]
-    
-    return df_summary
 
 

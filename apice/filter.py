@@ -33,23 +33,25 @@ class Filter:
             Returns:
                 mne.io.Raw: The filtered EEG data object.
     """
-    def __init__(self, raw, low_pass_freq=40.0, high_pass_freq=0.1, n_jobs=-1):
+    def __init__(self, raw, h_freq=40.0, l_freq=0.1, h_trans_bandwidth=10, l_trans_bandwidth=0.1, n_jobs=-1):
         """
         Initializes the Filter object with specified low pass and high pass filter cutoff frequencies.
 
         Args:
             - raw: Object containing EEG data and information.
-            - low_pass_freq (float): Low pass filter cutoff frequency in Hz. Defaults to 40.0 Hz.
-            - high_pass_freq (float): High pass filter cutoff frequency in Hz. Defaults to 0.1 Hz.
+            - h_freq (float): Low pass filter cutoff frequency in Hz. Defaults to 40 Hz.
+            - l_freq (float): High pass filter cutoff frequency in Hz. Defaults to 0.1 Hz.
+            - h_trans_bandwidth (float): Transition bandwidth for the low-pass filter in Hz. Defaults to 10 Hz.
+            - l_trans_bandwidth (float): Transition bandwidth for the high-pass filter in Hz. Defaults to 0.1 Hz.
         """
 
-        if low_pass_freq:
-            self.remove_high_freq(raw, f_cutoff=low_pass_freq, n_jobs=n_jobs)
-        if high_pass_freq:
-            self.remove_low_freq(raw, f_cutoff=high_pass_freq, n_jobs=n_jobs)
+        if h_freq:
+            self.low_pass(raw, f_cutoff=h_freq, h_trans_bandwidth=h_trans_bandwidth, n_jobs=n_jobs)
+        if l_freq:
+            self.high_pass(raw, f_cutoff=l_freq, l_trans_bandwidth=l_trans_bandwidth, n_jobs=n_jobs)
 
     @staticmethod
-    def remove_low_freq(raw, f_cutoff=0.1, n_jobs=-1):
+    def high_pass(raw, f_cutoff=0.1, l_trans_bandwidth=0.1, n_jobs=-1):
         """
         Applies high pass filtering on EEG data.
 
@@ -58,11 +60,11 @@ class Filter:
             - f_cutoff (float): High pass filter cutoff frequency in Hz; defaults to 0.1 Hz.
         """
 
-        raw.load_data().filter(l_freq=f_cutoff, h_freq=None, l_trans_bandwidth=0.1, n_jobs=n_jobs)
+        raw.load_data().filter(l_freq=f_cutoff, h_freq=None, l_trans_bandwidth=l_trans_bandwidth, n_jobs=n_jobs)
         return
 
     @staticmethod
-    def remove_high_freq(raw, f_cutoff=40.0, n_jobs=-1):
+    def low_pass(raw, f_cutoff=40.0, h_trans_bandwidth=10, n_jobs=-1):
         """
         Applies low pass filtering on EEG data.
 
@@ -71,5 +73,5 @@ class Filter:
             - f_cutoff (float): Low pass filter cutoff frequency in Hz; defaults to 40 Hz.
         """
 
-        raw.load_data().filter(l_freq=None, h_freq=f_cutoff, h_trans_bandwidth=10, n_jobs=n_jobs)
+        raw.load_data().filter(l_freq=None, h_freq=f_cutoff, h_trans_bandwidth=h_trans_bandwidth, n_jobs=n_jobs)
         return

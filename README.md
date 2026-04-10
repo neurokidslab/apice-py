@@ -25,23 +25,39 @@ APICE-Py is a modular and scalable EEG preprocessing pipeline built on top of [M
 
 ---
 
-## 📦 Installation
+## Installation
 
-### 1. Clone the Repository
+### 1. Clone the repository
 
 ```bash
 git clone https://github.com/neurokidslab/apice-py.git
 cd apice-py
 ```
 
-### 2. Install Dependencies
-
-Install required packages from `requirements.txt`:
+### 2. Create and activate a Python environment (recommended)
 
 ```bash
-pip install -r requirements.txt
+python -m venv .venv
+# Windows PowerShell
+.venv\Scripts\Activate.ps1
 ```
-**Note**: Requires Python >= 3.12
+
+### 3. Install APICE in editable mode
+
+```bash
+python -m pip install --upgrade pip setuptools wheel
+python -m pip install -e .
+```
+
+This installs the package from `pyproject.toml` and links the local source, so changes in the `apice/` folder are immediately available without reinstalling.
+
+Optional: if you only want to install dependency pins from the requirements file, run:
+
+```bash
+python -m pip install -r requirements.txt
+```
+
+Note: Python >= 3.12 is required.
 
 ---
 ## 📂 Sample Data
@@ -49,54 +65,72 @@ pip install -r requirements.txt
 For sample input raw data, use the [sample files](https://github.com/neurokidslab/eeg_preprocessing/tree/main/examples/example_original/DATA/set).
 
 ---
-## 📁 Project Structure
+## Project Structure
 
-```bash
-APICE-Py/
-├── main_terminal.py # CLI version: accepts arguments
-├── main_config.py # Manual config version: edit params in code
-├── preprocessing/ # Core EEG processing modules
-│ ├── argparser_main.py
-│ ├── artifacts_correction.py
-│ └── ...
-├── data/ # EEG input data
-├── output/ # Processed data and logs
-│ ├── artifacts
-│ ├── epochs
-│ └── ...
-├── electrode_layout/ # montage (optional)
-├── requirements.txt # Dependencies list
-└── README.md # Project info
+```text
+apice-py/
+├── apice/                          # Package source code
+│   ├── __init__.py
+│   ├── pipeline.py                 # High-level preprocessing pipeline entry points
+│   ├── data_structures.py          # RawAPICE and EpochsAPICE custom containers
+│   ├── artifacts_detection.py      # Artifact detection methods
+│   ├── artifacts_correction.py     # Artifact correction methods
+│   ├── artifacts_rejection.py      # Artifact rejection methods
+│   ├── artifacts_structure.py      # Artifact matrices and management classes
+│   ├── io.py                       # I/O helpers
+│   ├── filter.py                   # Filtering utilities
+│   ├── electrode_positions.py      # Electrode position helpers
+│   ├── utils.py                    # Utility functions and config loading
+│   └── default_cfg/                # Default JSON configurations bundled with the package
+├── electrode_layout/               # Example montage files (.sfp)
+├── tests/                          # Test assets and test data folders
+├── script_pipeline_preprocessing.py
+├── script_pipeline_segmentation.py
+├── pyproject.toml                  # Build system and package metadata
+├── requirements.txt                # Optional dependency install list
+├── LICENSE
+└── README.md
 ```
 
 ---
-## 🛠️ Usage
+## Usage
 
-### Option 1: Command-Line Interface
+### 1. Run the default preprocessing script
 
-Use `main_terminal.py` to preprocess EEG data via command-line arguments:
+Edit paths and parameters in `script_pipeline_preprocessing.py`, then run:
 
 ```bash
-python main_terminal.py \
-  --input "input" \
-  --output "output" \
-  --selection_method 1\
-  --montage "electrode_layout/montage_file \
-  --event_keys_for_segmentation Event1, Event2, Event3 \
-  --event_tile_window -1.6, 2.0 \
-  --baseline_tile_window -1.6, 0
+python script_pipeline_preprocessing.py
 ```
-### Option 2: Manual Configuration
 
-Edit parameters directly in `main_config.py` and run:
+This script calls `run_preprocessing(...)` from `apice.pipeline` and writes preprocessed outputs to your configured output directory.
+
+### 2. Run the default segmentation script
+
+Edit paths and segmentation settings in `script_pipeline_segmentation.py`, then run:
+
 ```bash
-python main_config.py
+python script_pipeline_segmentation.py
+```
+
+This script calls `run_segmentation(...)` from `apice.pipeline` and can save epochs, evokeds, report, summary, and config files.
+
+### 3. Use APICE from your own Python code
+
+```python
+from apice.pipeline import run_preprocessing, run_segmentation
+
+# Run preprocessing on your dataset
+run_preprocessing(input_dir, output_dir, ...)
+
+# Run segmentation on preprocessed data
+run_segmentation(input_dir, output_dir, kwargs_events_from_annotations, event_time_window, ...)
 ```
 
 ---
 ## 📖 Documentation
 
-Click [here](https://zenodo.org/records/17151631) fo the documentation (examples, customization guide, pipeline structure).
+Click [here](https://zenodo.org/records/17151631) for the documentation (examples, customization guide, pipeline structure).
 
 ---
 ## 📖 Citation
@@ -131,7 +165,7 @@ Contributions are welcome! Feel free to:
 
 ---
 ## 📜 License
-This project is licensed under the Apache-2.0 license. See `LICENSE`for details.
+This project is licensed under the Apache-2.0 license. See `LICENSE` for details.
 
 ---
 ## ✨ Acknowledgements
