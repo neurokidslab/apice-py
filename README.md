@@ -38,8 +38,6 @@ cd apice-py
 
 ```bash
 python -m venv .venv
-# Windows PowerShell
-.venv\Scripts\Activate.ps1
 ```
 
 ### 3. Install APICE in editable mode
@@ -83,7 +81,6 @@ apice-py/
 │   ├── utils.py                    # Utility functions and config loading
 │   └── default_cfg/                # Default JSON configurations bundled with the package
 ├── electrode_layout/               # Example montage files (.sfp)
-├── tests/                          # Test assets and test data folders
 ├── script_pipeline_preprocessing.py
 ├── script_pipeline_segmentation.py
 ├── pyproject.toml                  # Build system and package metadata
