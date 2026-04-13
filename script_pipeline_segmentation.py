@@ -69,7 +69,7 @@ def main():
     # If None, only the epochs will be saved.
     # If "all", evoked responses will be computed for all event types in the data and saved in a single file.
     # If a list of strings with event types, evoked responses will be computed for each event type in the list and saved in separate files. 
-    EVOKED_BY = ["shape/circle","shape/star"]
+    EVOKED_BY = ["shape"]
 
     # Configuration parameters for specific segmentation steps (e.g., defining BCBT epochs, spline interpolation, etc.). Set to None to apply the default configuration.
     CFG_DEFINE_BCBT_EPOCHS = None
@@ -78,6 +78,9 @@ def main():
 
     # Number of parallel jobs to run for computationally intensive steps (e.g., bad channels detection, artifacts detection, etc.). Set to -1 to use all available cores.
     N_JOBS = -1
+
+    # Whether to show figures during preprocessing (e.g., plots of detected bad channels, artifacts, etc.). Set to False to not show figures.
+    SHOW_FIGURES = False
 
 
     # Run the segmentation pipeline with the specified parameters
@@ -110,6 +113,7 @@ def main():
         cfg_spline_channels=CFG_SPLINE_CHANNELS,  
         cfg_bad_epochs=CFG_BAD_EPOCHS,              
         n_jobs=N_JOBS,
+        show_figures=SHOW_FIGURES,
         )
 
 

@@ -1,3 +1,13 @@
+"""Artifact detection algorithms for EEG preprocessing.
+
+This module provides a comprehensive set of artifact detection algorithms
+for identifying and marking bad data in continuous and epoched EEG recordings.
+Algorithms include amplitude-based detection, frequency-domain analysis, and
+cross-electrode correlation methods. Each detection method is configurable via
+parameter dictionaries passed to ``ArtifactsConfiguration`` and executed within
+the main artifact rejection pipeline.
+"""
+
 import numpy as np
 from scipy import interpolate
 from scipy.stats import yeojohnson
@@ -14,6 +24,36 @@ from apice.utils import (get_data_size,
 # %% CLASSES FOR ARTIFACTS DETECTION
 
 class DetectionMethod:
+    """Base class for artifact detection algorithms.
+
+    Provides common interface, preprocessing/postprocessing steps, and
+    parameter management for all detection algorithm subclasses.
+
+    Parameters
+    ----------
+    bad_data : str | None, default=None
+        Artifact mask to use for exclusion ('bct', 'bc', 'bt', or None).
+    do_reference_data : bool, default=False
+        Apply average reference before detection computation.
+    do_zscore : bool, default=False
+        Apply z-score standardization before detection.
+    mask : float | int, default=0
+        Time window (seconds) to mask around detected artifacts.
+    update_artifacts : bool, default=True
+        If True, update ``raw.artifacts.BCT`` with detected samples.
+    remove_bct : bool, default=True
+        Include bad-channel-time mask in exclusion.
+    remove_bt : bool, default=True
+        Include bad-time mask in exclusion.
+    remove_bc : bool, default=True
+        Include bad-channel mask in exclusion.
+    name : str | None, default=None
+        Algorithm name for logging and configuration.
+    group_name : str | None, default=None
+        Configuration group this algorithm belongs to.
+    verbose : bool, default=True
+        Print algorithm progress and rejection statistics.
+    """
 
     def __init__(self, bad_data=None, do_reference_data=False, do_zscore=False, 
                  mask=0, update_artifacts=True,
@@ -29,7 +69,18 @@ class DetectionMethod:
         self.verbose = verbose
         
     def steps_pre_compute(self, raw):
-        
+        """Apply preprocessing transformations before detection computation.
+
+        Parameters
+        ----------
+        raw : RawAPICE
+            Input raw object.
+
+        Returns
+        -------
+        raw : RawAPICE
+            Preprocessed raw object (may be referenced/normalized).
+        """
         # print info
         if self.verbose:
             print(f'Computing signal {self.name}...')
@@ -45,7 +96,18 @@ class DetectionMethod:
         return raw
     
     def steps_post_compute(self, raw):
-        
+        """Restore original data scale after detection computation.
+
+        Parameters
+        ----------
+        raw : RawAPICE
+            Raw object with transformed data.
+
+        Returns
+        -------
+        raw : RawAPICE
+            Raw object with original scale restored.
+        """
         # save some info
         self.sfreq = raw.info['sfreq']
         self.data_shape = np.shape(raw._data)
@@ -59,14 +121,31 @@ class DetectionMethod:
         return raw
         
     def steps_pre_reject(self):
-                
+        """Log rejection parameters and begin rejection phase."""
         if self.verbose:
             print('Rejecting data based on the signal {}...'.format(self.name))
             for k in self.params_reject.keys():
                 print('-- {}: '.format(k), self.params_reject[k])
                 
     def steps_post_reject(self, raw, bct, show_rej=None):
-        
+        """Apply masking, update artifact matrix, and log rejection statistics.
+
+        Parameters
+        ----------
+        raw : RawAPICE
+            Raw object with current artifact matrix.
+        bct : numpy.ndarray
+            Bad-channel-time binary mask from detection.
+        show_rej : dict | None, default=None
+            Additional rejection statistics to display.
+
+        Returns
+        -------
+        bct : numpy.ndarray
+            Masked bad-channel-time array.
+        raw : RawAPICE
+            Updated raw object with modified artifact matrix.
+        """
         # Mask around artifacts
         if self.params_reject['mask']:
             mask_length = np.round(self.params_reject['mask'] * raw.info['sfreq'])
@@ -96,9 +175,27 @@ class DetectionMethod:
     
 
 class Amplitude(DetectionMethod):
+    """Detect artifacts via absolute amplitude thresholding.
 
-    """
-    Class for artifacts detection base on amplitude
+    Identifies samples exceeding specified amplitude limits, with optional
+    transformation (log, square root, power) and per-channel relative thresholding.
+
+    Parameters
+    ----------
+    data_transformation : str, default='none'
+        Transform to apply ('none', 'log', 'sqrt', 'power', 'yeojohnson').
+    threshold : float, default=100
+        Amplitude threshold in microvolts or transformed units.
+    iq_half : bool, default=False
+        If True, use IQR/2 for relative rejection instead of IQR.
+    yeojohnson_lambda : float | None, default=None
+        Lambda parameter for Yeo-Johnson transformation.
+    rejection : str, default='relative'
+        Type of rejection ('absolute', 'relative').
+
+    See Also
+    --------
+    DetectionMethod : Base detection class.
     """
     
     def __init__(self, bad_data=None, do_reference_data=False, do_zscore=False, name=None, group_name=None, verbose=True, 
@@ -169,9 +266,23 @@ class Amplitude(DetectionMethod):
 
 
 class RunningAverage(DetectionMethod):
+    """Detect artifacts via running average of amplitude.
 
-    """
-    Class for artifacts detection base of distance
+    Computes sliding window average of signal magnitude and flags samples
+    exceeding threshold relative to local statistics.
+
+    Parameters
+    ----------
+    window_size : int
+        Window size in samples for running average.
+    threshold : float
+        Amplitude threshold for detection.
+    iq_half : bool, default=False
+        Use IQR/2 for relative thresholding.
+
+    See Also
+    --------
+    DetectionMethod : Base detection class.
     """
 
     def __init__(self, bad_data=None, fast_wind=0.05, slow_wind=0.15, do_reference_data=False, do_zscore=False, name=None, group_name=None, verbose=True, 
@@ -289,6 +400,20 @@ class RunningAverage(DetectionMethod):
         return fast_average, diff_average
 
 def running_mean(x, N):
+    """Compute running average of array with edge padding.
+
+    Parameters
+    ----------
+    x : numpy.ndarray
+        Input array.
+    N : int
+        Window size in samples.
+
+    Returns
+    -------
+    numpy.ndarray
+        Running average with same shape as input (edge-padded).
+    """
     if N % 2 ==0:
         x_ini = np.full(int(N/2), x[0])
         x_end = np.full(int(N/2), x[-1])
@@ -300,9 +425,23 @@ def running_mean(x, N):
     return (cumsum[N:] - cumsum[:-N]) / float(N)
 
 class TimeVariance(DetectionMethod):
+    """Detect artifacts via time-domain variance analysis.
 
-    """
-    Class for artifacts detection base on time variance
+    Identifies time windows with anomalously high variance using quantile-based
+    thresholding on rolling window variance.
+
+    Parameters
+    ----------
+    window_size : int
+        Variance window size in samples.
+    threshold : float
+        Variance deviation threshold.
+    iq_half : bool, default=False
+        Use IQR/2 for relative thresholding.
+
+    See Also
+    --------
+    DetectionMethod : Base detection class.
     """
     
     def __init__(self, bad_data=None, do_reference_data=False, do_zscore=False, name=None, group_name=None, verbose=True, 
@@ -411,9 +550,25 @@ class TimeVariance(DetectionMethod):
     
     
 class MaxChange(DetectionMethod):
+    """Detect artifacts via maximum sample-to-sample amplitude change.
 
-    """
-    Class for artifacts detection base on maximun change
+    Identifies samples where the maximum difference between consecutive samples
+    exceeds threshold in a time window.
+
+    Parameters
+    ----------
+    time_window : float
+        Window duration in seconds for change computation.
+    time_window_step : float
+        Step size in seconds for sliding window.
+    threshold : float
+        Maximum change threshold in microvolts.
+    iq_half : bool, default=False
+        Use IQR/2 for relative thresholding.
+
+    See Also
+    --------
+    DetectionMethod : Base detection class.
     """
     
     def __init__(self, bad_data=None, do_reference_data=False, do_zscore=False, name=None, group_name=None, verbose=True, 
@@ -481,9 +636,23 @@ class MaxChange(DetectionMethod):
     
 
 class CrossElectrodesOutlier(DetectionMethod):
+    """Detect multi-channel artifacts via cross-electrode correlation anomalies.
 
-    """
-    Class for artifacts detection base on between electrodes variance
+    Identifies samples where one or more channels show atypical correlation
+    patterns with neighboring electrodes, indicating focal artifacts.
+
+    Parameters
+    ----------
+    threshold : float
+        Correlation deviation threshold.
+    method : str, default='zscore'
+        Statistical method for outlierness ('zscore', 'iqr').
+    iq_half : bool, default=False
+        Use IQR/2 for relative thresholding.
+
+    See Also
+    --------
+    DetectionMethod : Base detection class.
     """
     
     def __init__(self, bad_data=None, do_reference_data=False, do_zscore=True, name=None, group_name=None, verbose=True, 
@@ -600,9 +769,26 @@ class CrossElectrodesOutlier(DetectionMethod):
       
 
 class Power(DetectionMethod):
+    """Detect artifacts via frequency-domain power analysis.
 
-    """
-    Class for artifacts detection base on power
+    Computes power spectrum in specified frequency bands and flags samples
+    with anomalous power levels (e.g., excessive 50/60 Hz line noise or
+    broadband high-frequency content).
+
+    Parameters
+    ----------
+    l_freq : float
+        Low frequency bound in Hz.
+    h_freq : float
+        High frequency bound in Hz.
+    threshold : float
+        Power threshold for detection.
+    iq_half : bool, default=False
+        Use IQR/2 for relative thresholding.
+
+    See Also
+    --------
+    DetectionMethod : Base detection class.
     """
     
     def __init__(self, bad_data=None, do_reference_data=False, do_zscore=False, name=None, group_name=None, verbose=True, 
@@ -710,12 +896,26 @@ class Power(DetectionMethod):
 
 
 class ChannelCorr(DetectionMethod):
-    
+    """Detect bad channels via low inter-channel correlation.
+
+    Identifies channels that show systematically low correlation with their
+    neighbors, indicating dead/disconnected electrodes or systematic artifacts.
+
+    Parameters
+    ----------
+    threshold : float
+        Minimum correlation threshold.
+    method : str, default='mean'
+        Correlation metric ('mean', 'median', 'min').
+    iq_half : bool, default=False
+        Use IQR/2 for relative thresholding.
+
+    See Also
+    --------
+    DetectionMethod : Base detection class.
     """
-    Class for artifacts detection base on between channels correlation
-    """
     
-    def __init__(self, bad_data=None, do_reference_data=False, do_zscore=False, name=None, group_name=None, verbose=True, 
+    def __init__(self, bad_data=None, do_reference_data=False, do_zscore=False, name=None, group_name=None, verbose=True,
                  time_window=10, time_window_step=5, top_channel_corr=5,
                  thresh=0.4, mask=0.05, update_artifacts=True,
                  remove_bct=True, remove_bt=True, remove_bc=True):
@@ -818,12 +1018,22 @@ class ChannelCorr(DetectionMethod):
 
 
 class FlatChannel(DetectionMethod):
-    
+    """Detect flat/dead channels via zero or near-zero variance.
+
+    Identifies channels with constant or near-constant values over time,
+    indicating hardware failures or disconnected electrodes.
+
+    Parameters
+    ----------
+    threshold : float
+        Variance threshold below which to flag channel as flat.
+
+    See Also
+    --------
+    DetectionMethod : Base detection class.
     """
-    Class for detecting flat channels
-    """
     
-    def __init__(self, bad_data=None, do_reference_data=False, do_zscore=False, name=None, group_name=None, verbose=True, 
+    def __init__(self, bad_data=None, do_reference_data=False, do_zscore=False, name=None, group_name=None, verbose=True,
                  time_window=10, time_window_step=5, min_change=1e-7, 
                  thresh=5, mask=0, update_artifacts=True,
                  remove_bct=True, remove_bt=True, remove_bc=True):
@@ -928,6 +1138,19 @@ class FlatChannel(DetectionMethod):
 # %% CLASSES FOR MODIFYING REJECTION
 
 class ModifyRejection:
+    """Base class for post-detection artifact mask transformations.
+
+    Applies morphological and logical operations to detection outputs,
+    including masking, inclusion of short segments, and exclusion of
+    segments too short to reliably process.
+
+    Subclasses are called in sequence after detection algorithms to refine
+    rejection masks before updating the artifact matrix.
+
+    See Also
+    --------
+    Mask, ShortGoodSegments, ShortBadSegments : Concrete subclasses.
+    """
 
     def __init__(self, update_artifacts=True, name=None, group_name=None, verbose=True):
 
@@ -963,9 +1186,19 @@ class ModifyRejection:
         return bct, raw
 
 class Mask(ModifyRejection):
+    """Apply temporal masking around detected artifact times.
 
-    """
-    Class for masking rejection 
+    Expands binary artifact mask by padding detected samples with surrounding
+    context window to ensure complete artifact removal.
+
+    Parameters
+    ----------
+    mask_length : float
+        Time window in seconds to pad around detected artifacts.
+
+    See Also
+    --------
+    ModifyRejection : Base post-detection class.
     """
     
     def __init__(self, mask_length=0.5, update_artifacts=True, name=None, group_name=None, verbose=True):
@@ -1005,11 +1238,21 @@ class Mask(ModifyRejection):
 
 
 class ShortGoodSegments(ModifyRejection):
+    """Include short clean/good segments within larger detected artifacts.
 
+    Fills isolated clean samples that fall between detected artifacts, treating
+    them as artifacts to ensure continuity of bad data regions.
+
+    Parameters
+    ----------
+    min_duration : float
+        Minimum clean segment duration in seconds to preserve.
+
+    See Also
+    --------
+    ModifyRejection : Base post-detection class.
     """
-    Class for masking rejection 
-    """
-    
+
     def __init__(self, time_limit=2, update_artifacts=True, name=None, group_name=None, verbose=True):
         
         super().__init__(update_artifacts=update_artifacts, name=name, group_name=group_name, verbose=verbose)
@@ -1050,11 +1293,22 @@ class ShortGoodSegments(ModifyRejection):
 
 
 class ShortBadSegments(ModifyRejection):
+    """Exclude very short detected artifact segments.
 
+    Removes detected bad samples that don't form continuous segments lasting
+    at least the specified minimum duration, reducing false positives from
+    brief noise spikes.
+
+    Parameters
+    ----------
+    min_duration : float
+        Minimum artifact segment duration in seconds to retain.
+
+    See Also
+    --------
+    ModifyRejection : Base post-detection class.
     """
-    Class for masking rejection 
-    """
-    
+
     def __init__(self, time_limit=2, update_artifacts=True, name=None, group_name=None, verbose=True):
         
         super().__init__(update_artifacts=update_artifacts, name=name, group_name=group_name, verbose=verbose)
@@ -1096,6 +1350,23 @@ class ShortBadSegments(ModifyRejection):
 # %% FUNCTIONS
 
 def maxchange(raw, time_window, time_window_step):
+    """Compute local max-min amplitude difference in sliding windows.
+
+    Parameters
+    ----------
+    raw : RawAPICE
+        Input raw or epoched EEG object.
+    time_window : float
+        Window duration in seconds used to compute max-min differences.
+    time_window_step : float
+        Step size in seconds between consecutive windows.
+
+    Returns
+    -------
+    maxmindiff : numpy.ndarray
+        Max-min difference per channel and time sample, interpolated to the
+        original data sampling grid.
+    """
     
     n_channels, n_samples, n_epochs = get_data_size(raw)
     
@@ -1135,6 +1406,22 @@ def maxchange(raw, time_window, time_window_step):
 
 
 def interpolate_tw(raw, data_tw, time_tw):
+    """Interpolate time-window aligned data back to full sampling rate.
+
+    Parameters
+    ----------
+    raw : RawAPICE
+        Raw object with original sampling rate.
+    data_tw : numpy.ndarray
+        Time-window aggregated data.
+    time_tw : numpy.ndarray
+        Time points corresponding to windows.
+
+    Returns
+    -------
+    data_interp : numpy.ndarray
+        Interpolated data at original sampling rate.
+    """
     n_channels, n_samples, n_epochs = get_data_size(raw)
     
     data = np.empty((n_epochs, n_channels, n_samples))
@@ -1156,15 +1443,25 @@ def interpolate_tw(raw, data_tw, time_tw):
     return data
 
 def define_time_window(raw, time_window, time_window_step):
+    """Define sliding time windows for feature extraction.
+
+    Parameters
+    ----------
+    raw : RawAPICE
+        Raw object with sampling rate and duration info.
+    time_window : float
+        Window duration in seconds.
+    time_window_step : float
+        Step size in seconds between window starts.
+
+    Returns
+    -------
+    time_windows : numpy.ndarray
+        Start and end indices for each window.
+    time_points : numpy.ndarray
+        Time values (seconds) at window centers.
     """
-    This function creates a matrix that divides the data into segments whose length is defined by the
-    time window duration sliding based on the number of step length.
-    :param raw: object containing the eeg data
-    :param time_window: window duration in seconds
-    :param time_window_step: stride in seconds
-    :return: i_t: windows limits in samples
-             n_time_window: number of generated time windows
-    """
+    
     n_channels, n_samples, n_epochs = get_data_size(raw)
 
     time_window = int(np.round(time_window * raw.info['sfreq']))
@@ -1186,6 +1483,22 @@ def define_time_window(raw, time_window, time_window_step):
     return i_t, time_tw
 
 def data_transformation(data, transform, yeojohnson_lambda=None):
+    """Apply nonlinear transformation to data for artifact detection.
+
+    Parameters
+    ----------
+    data : numpy.ndarray
+        Input signal array.
+    transform : str
+        Transformation to apply ('log', 'sqrt', 'power', 'yeojohnson', 'none').
+    yeojohnson_lambda : float | None, default=None
+        Lambda parameter for Yeo-Johnson transformation.
+
+    Returns
+    -------
+    data_transformed : numpy.ndarray
+        Transformed data.
+    """
 
     if transform not in ['sqrt', 'cbrt', 'log', 'yeojohnson', None]:
         raise Exception("transform can take one of these values ['sqrt', 'cbrt', 'log', 'yeojohnson', None]")
@@ -1210,6 +1523,39 @@ def data_transformation(data, transform, yeojohnson_lambda=None):
     return data
 
 def reject_data(data, raw, thresh, transform=None, yeojohnson_lambda=None, iq_half=False, rejection='absolute', remove_bt=True, remove_bct=True, remove_bc=True):
+    """Detect artifacts by thresholding signal data.
+
+    Applies optional transformation and thresholding (absolute or relative)
+    to identify bad channels and time points.
+
+    Parameters
+    ----------
+    data : numpy.ndarray
+        Input signal (channels x time).
+    raw : RawAPICE
+        Raw object with artifact matrix.
+    thresh : float
+        Amplitude or statistical threshold.
+    transform : str | None, default=None
+        Data transformation before thresholding.
+    yeojohnson_lambda : float | None, default=None
+        Lambda for Yeo-Johnson transform.
+    iq_half : bool, default=False
+        Use IQR/2 for relative thresholding.
+    rejection : str, default='absolute'
+        Rejection type ('absolute' or 'relative').
+    remove_bt : bool, default=True
+        Include bad-time mask in result.
+    remove_bct : bool, default=True
+        Include bad-channel-time mask in result.
+    remove_bc : bool, default=True
+        Include bad-channel mask in result.
+
+    Returns
+    -------
+    bct : numpy.ndarray
+        Bad-channel-time binary mask.
+    """
     
     possible_rejection = ['absolute', 'outliers_all', 'outliers_per_channel']
     if rejection not in possible_rejection:
@@ -1229,6 +1575,31 @@ def reject_data(data, raw, thresh, transform=None, yeojohnson_lambda=None, iq_ha
 
 
 def reject_relative_per_cha(data, art, thresh, iq_half=False, remove_bt=True, remove_bct=True):
+    """Detect artifacts via per-channel relative thresholding.
+
+    Computes channel-wise quantile statistics and flags samples exceeding
+    threshold relative to channel IQR.
+
+    Parameters
+    ----------
+    data : numpy.ndarray
+        Input signal (channels x time).
+    art : Artifacts
+        Artifact matrix container.
+    thresh : float
+        IQR multiple for thresholding (e.g., 2 = 2x IQR above Q3).
+    iq_half : bool, default=False
+        Use IQR/2 instead of full IQR.
+    remove_bt : bool, default=True
+        Include bad-time mask in computation.
+    remove_bct : bool, default=True
+        Include bad-channel-time mask in computation.
+
+    Returns
+    -------
+    bct : numpy.ndarray
+        Bad-channel-time binary mask.
+    """
         
     if iq_half:
         if type(thresh)==float or type(thresh)==int:
@@ -1268,10 +1639,12 @@ def reject_relative_per_cha(data, art, thresh, iq_half=False, remove_bt=True, re
     
     # reject
     ru_sum = 0  # upper threshold
-    rl_sum = 0  # upper threshold
+    rl_sum = 0  # lower threshold
     for el in np.arange(n_channels):
         
         d = data_rej[:,el,:].flatten()
+        if np.sum(~np.isnan(d))==0: # no data to compute the threshold
+            continue
         if iq_half:
             perc = np.nanpercentile(np.abs(d), 50, method='hazen')
             IQ = 2 * perc # Get the half distribution centered at zero
@@ -1304,6 +1677,33 @@ def reject_relative_per_cha(data, art, thresh, iq_half=False, remove_bt=True, re
 
 
 def reject_relative(data, art, thresh, iq_half=False, remove_bt=True, remove_bct=True, remove_bc=True):
+    """Detect artifacts via global relative thresholding.
+
+    Computes global quantile statistics across all channels and time points,
+    then flags samples exceeding threshold relative to distribution.
+
+    Parameters
+    ----------
+    data : numpy.ndarray
+        Input signal (channels x time).
+    art : Artifacts
+        Artifact matrix container.
+    thresh : float
+        IQR multiple for thresholding.
+    iq_half : bool, default=False
+        Use IQR/2 instead of full IQR.
+    remove_bt : bool, default=True
+        Include bad-time mask in computation.
+    remove_bct : bool, default=True
+        Include bad-channel-time mask in computation.
+    remove_bc : bool, default=True
+        Include bad-channel mask in computation.
+
+    Returns
+    -------
+    bct : numpy.ndarray
+        Bad-channel-time binary mask.
+    """
         
     if iq_half:
         if type(thresh)==float or type(thresh)==int:
@@ -1344,6 +1744,12 @@ def reject_relative(data, art, thresh, iq_half=False, remove_bt=True, remove_bct
     if remove_bc:
         data_rej[np.tile(bc,(1,1,n_samples))==1] = np.nan       
     
+    if np.sum(~np.isnan(data_rej.flatten()))==0: # no data to compute the threshold
+        data_to_reject = np.full(np.shape(data), False)
+        rl_sum = 0  # lower threshold
+        ru_sum = 0  # upper threshold
+        return data_to_reject, rl_sum, ru_sum
+    
     # reject
     if iq_half:
         perc = np.nanpercentile(np.abs(data_rej.flatten()), 50, method='hazen')
@@ -1377,6 +1783,25 @@ def reject_relative(data, art, thresh, iq_half=False, remove_bt=True, remove_bct
 
 
 def reject_absolute(data, thresh, iq_half=False):
+    """Detect artifacts via absolute amplitude thresholding.
+
+    Flags samples exceeding specified amplitude threshold regardless of
+    local statistics.
+
+    Parameters
+    ----------
+    data : numpy.ndarray
+        Input signal (channels x time).
+    thresh : float
+        Absolute amplitude threshold in microvolts.
+    iq_half : bool, default=False
+        (Unused, for API compatibility.)
+
+    Returns
+    -------
+    bct : numpy.ndarray
+        Bad-channel-time binary mask.
+    """
         
     if iq_half:
         if type(thresh)==float or type(thresh)==int:
@@ -1419,18 +1844,31 @@ def reject_absolute(data, thresh, iq_half=False):
 
 
 def remove_bad_data(raw, bad_data=None, artifact_type='all', verbose=True):
+    """Extract data excluding specified artifact types.
+
+    Parameters
+    ----------
+    raw : RawAPICE
+        Raw object with artifact matrix.
+    bad_data : str | None, default=None
+        What to do with the bad data ('replace by nan', 'replace by zero', 'replace by mean', None).
+    artifact_type : str, default='all' 
+        Which artifacts to exclude using the rejection matrices ('bct', 'bc', 'bt', 'all').
+    verbose : bool, default=True
+        Print exclusion statistics.
+
+    Returns
+    -------
+    data_clean : numpy.ndarray
+        Data with specified artifacts removed.
     """
-    This function replaces the bad data in the raw data as defined in the artifacts' matrix.
-    :param raw: object containing the eeg data
-    :param bad_data: replaces the bad data by
-                        None : the bad data will be retained
-                        'replace by zero': the bad data will be replaced by 0
-                        'replace by nan': the bad data will be replaced by 'NaNs
-                        'replace by mean': the bad data will be replaced by the mean over all epochs
-    :param artifact_type: artifact to be removed
-    :param verbose: warning message
-    :return:
-    """
+    
+    if bad_data not in ['replace by nan', 'replace by zero', 'replace by mean', None]:
+        raise ValueError("Invalid value for bad_data parameter.")
+    
+    if artifact_type not in ['all', 'bct', 'bt', 'bc', 'BTBC']:
+        raise ValueError("Invalid value for artifact_type parameter.")
+    
     if bad_data is None:
         return raw._data.copy()
     
@@ -1441,15 +1879,15 @@ def remove_bad_data(raw, bad_data=None, artifact_type='all', verbose=True):
     data_to_remove = np.full(np.shape(raw._data), False)
 
     # Setting up the indexes of the data to be removed
-    if artifact_type in ['all', 'bct']:
+    if artifact_type.lower() in ['all', 'bct']:
         data_to_remove[raw.artifacts.BCT==1] = True
-    if artifact_type in ['all', 'BTBC', 'BT'] and hasattr(raw.artifacts,'BT'):
+    if artifact_type.lower() in ['all', 'btbc', 'bt'] and hasattr(raw.artifacts,'BT'):
         if np.size(np.shape(raw.artifacts.BT)) == 2:
             bt = np.tile(raw.artifacts.BT, (n_channels, 1))
         elif np.size(np.shape(raw.artifacts.BT)) == 3:
             bt = np.tile(raw.artifacts.BT, (1, n_channels, 1))    
         data_to_remove[bt] = True
-    if artifact_type in ['all', 'BTBC', 'BC'] and hasattr(raw.artifacts,'BC'):
+    if artifact_type.lower() in ['all', 'btbc', 'bc'] and hasattr(raw.artifacts,'BC'):
         if np.size(np.shape(raw.artifacts.BC)) == 2:
             bc = np.tile(raw.artifacts.BC, (1, n_samples))
         elif np.size(np.shape(raw.artifacts.BC)) == 3:
@@ -1470,7 +1908,6 @@ def remove_bad_data(raw, bad_data=None, artifact_type='all', verbose=True):
                 'replace by nan': '--> Bad data will be replaced by NaNs',
                 'replace by zero': '--> Bad data will be replaced by zeros',
                 'replace by mean': '--> Bad data will be replaced by the mean over all epochs',
-                'replace by mean  per condition': '--> Bad data will be replaced by the mean per condition'
             }
             print(message[bad_data])
         # Replace bad data
@@ -1490,11 +1927,21 @@ def remove_bad_data(raw, bad_data=None, artifact_type='all', verbose=True):
 
 
 def _set_reference(raw, bad_data=None):
-    """
-    Set the reference of the eeg data
-    :param raw: object containing the eeg data and related information
-    :param save_reference: whether to return the reference values, 'True' | 'False'
-    :return:
+    """Apply average reference to data, excluding bad channels/times.
+
+    Parameters
+    ----------
+    raw : RawAPICE
+        Raw object.
+    bad_data : str | None, default=None
+        Artifact type to exclude from reference computation.
+
+    Returns
+    -------
+    raw : RawAPICE
+        Raw object with referenced data.
+    reference : numpy.ndarray
+        Reference signal used for subtraction.
     """
     n_channels, n_samples, n_epochs = get_data_size(raw)
     
@@ -1524,11 +1971,21 @@ def _set_reference(raw, bad_data=None):
 
 
 def _compute_z_score(raw, bad_data=None):
-    """
-    Computes for the z-score on the artifacts
-    :param raw: object containing the eeg data and related information
-    :return: eeg_data: z-score data
-             sd: standard deviation
+    """Apply z-score standardization to data.
+
+    Parameters
+    ----------
+    raw : RawAPICE
+        Raw object.
+    bad_data : str | None, default=None
+        Artifact type to exclude from standardization computation.
+
+    Returns
+    -------
+    raw : RawAPICE
+        Raw object with z-scored data.
+    sd : numpy.ndarray
+        Standard deviation per channel (for restoring original scale).
     """
 
     warnings.filterwarnings("ignore")
@@ -1563,11 +2020,19 @@ def _compute_z_score(raw, bad_data=None):
 
 
 def _return_data_after_zscore(raw, sd):
-    """
-    If z_score was first applied on the eeg data, this function retrievs the previous data.
-    :param raw: object containing the eeg data
-    :param sd: standard deviation (computed by the z-score function)
-    :return:
+    """Restore original data scale from z-scores.
+
+    Parameters
+    ----------
+    raw : RawAPICE
+        Raw object with z-scored data.
+    sd : numpy.ndarray
+        Original standard deviations per channel.
+
+    Returns
+    -------
+    raw : RawAPICE
+        Raw object with original scale restored.
     """
     n_channels, n_samples, n_epochs = get_data_size(raw)
     
@@ -1584,10 +2049,19 @@ def _return_data_after_zscore(raw, sd):
     return raw
 
 def _return_data_after_referencing(raw, reference):
-    """
-    If the reference of the eeg was previously set, this function reset the data to its original reference.
-    :param raw: object containing the eeg data
-    :return:
+    """Remove average reference from data.
+
+    Parameters
+    ----------
+    raw : RawAPICE
+        Raw object with referenced data.
+    reference : numpy.ndarray
+        Reference signal to add back.
+
+    Returns
+    -------
+    raw : RawAPICE
+        Raw object with reference removed (restoring individual channel biases).
     """
     n_channels, n_samples, n_epochs = get_data_size(raw)
     if len(np.shape(raw._data))==2:

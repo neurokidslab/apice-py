@@ -1,3 +1,10 @@
+"""High-level preprocessing and segmentation workflows for APICE.
+
+This module orchestrates the end-to-end APICE pipelines for continuous EEG
+preprocessing, epoch segmentation, artifact summaries, logging, and report
+generation.
+"""
+
 import json
 
 import numpy as np
@@ -9,6 +16,8 @@ from datetime import datetime
 from tabulate import tabulate
 from datetime import timedelta
 import matplotlib.pyplot as plt
+import seaborn as sns
+
 from datetime import datetime, timezone
 
 
@@ -23,6 +32,19 @@ from apice.filter import Filter
 
 # %% CLASSES DEFINITIONS
 class Summary():
+    """Base helper for CSV-backed processing summaries.
+
+    Parameters
+    ----------
+    output_folder : str | pathlib.Path
+        Directory where the summary CSV will be stored.
+    output_file : str
+        Summary filename.
+    columns : list of str, default=['file_id', 'step', 'length', 'corrected_data', 'bad_data', 'bad_channels', 'bad_times']
+        Columns used when initializing a new summary dataframe.
+    try_loading : bool, default=True
+        If True, load an existing summary file when present.
+    """
 
     def __init__(self, 
                  output_folder,
@@ -42,23 +64,60 @@ class Summary():
             self.summary_df = pd.DataFrame(columns=columns)
         
     def load(self):
+        """Load summary data from disk if the CSV exists.
+
+        Returns
+        -------
+        None
+        """
         if self.output_full_path.exists():
             self.summary_df = pd.read_csv(self.output_full_path)
         else:
             print(f"File {self.output_full_path} does not exist. Summary could not be loaded.")
 
     def save(self):
+        """Persist the current summary dataframe to disk.
+
+        Returns
+        -------
+        None
+        """
         self.output_folder.mkdir(parents=True, exist_ok=True)
         self.summary_df.to_csv(self.output_full_path, index=False)
     
     def remove_file_from_summary(self, file_id):
+        """Remove all rows associated with one file identifier.
+
+        Parameters
+        ----------
+        file_id : str
+            File identifier to remove.
+
+        Returns
+        -------
+        None
+        """
         self.summary_df = self.summary_df[self.summary_df['file_id'] != file_id]
 
     def remove_file_step_from_summary(self, file_id, step):
+        """Remove rows associated with a specific file and step.
+
+        Parameters
+        ----------
+        file_id : str
+            File identifier to filter.
+        step : str
+            Processing step label to remove.
+
+        Returns
+        -------
+        None
+        """
         self.summary_df = self.summary_df[~((self.summary_df['file_id'] == file_id) & (self.summary_df['step'] == step))]
 
 
 class SummaryPreprocessing(Summary):
+    """Summary table specialized for continuous preprocessing outputs."""
 
     def __init__(self, 
                  output_folder, 
@@ -67,6 +126,25 @@ class SummaryPreprocessing(Summary):
                  outputfile_subfix="-summary-preproc.csv", 
                  try_loading=True,
                  ):
+        """Initialize preprocessing summary storage.
+
+        Parameters
+        ----------
+        output_folder : str | pathlib.Path
+            Directory where the summary CSV is stored.
+        file_name : str | pathlib.Path
+            Source filename used to derive the summary filename.
+        file_id : str | None, default=None
+            Custom file identifier. If None, derived from ``file_name``.
+        outputfile_subfix : str, default='-summary-preproc.csv'
+            Filename suffix for the summary CSV.
+        try_loading : bool, default=True
+            If True, load an existing summary file if available.
+
+        Returns
+        -------
+        None
+        """
         print("Initializing SummaryPreprocessing object")
         file_name = Path(file_name).stem
         outputfile = file_name + outputfile_subfix
@@ -87,6 +165,21 @@ class SummaryPreprocessing(Summary):
         self.file_id = file_id
 
     def add_to_summary(self, step, raw, overwrite=False):
+        """Append one preprocessing summary row.
+
+        Parameters
+        ----------
+        step : str
+            Processing step label.
+        raw : mne.io.BaseRaw
+            Raw object whose artifact metrics will be summarized.
+        overwrite : bool, default=False
+            If True, replace an existing row for the same file and step.
+
+        Returns
+        -------
+        None
+        """
         
         if not isinstance(raw, mne.io.BaseRaw):
             raise TypeError("raw must be an instance of mne.io.Raw")
@@ -113,6 +206,7 @@ class SummaryPreprocessing(Summary):
         self.summary_df.loc[len(self.summary_df)] = [self.file_id, step, length, corrected_data, bad_data, bad_channels, bad_times]
 
 class SummaryEpochs(Summary):
+    """Summary table specialized for segmented/epoched outputs."""
 
     def __init__(self, 
                  output_folder, 
@@ -121,6 +215,25 @@ class SummaryEpochs(Summary):
                  outputfile_subfix="summary-epo.csv", 
                  try_loading=True,
                  ):
+        """Initialize epochs summary storage.
+
+        Parameters
+        ----------
+        output_folder : str | pathlib.Path
+            Directory where the summary CSV is stored.
+        file_name : str | pathlib.Path
+            Source filename used to derive the summary filename.
+        file_id : str | None, default=None
+            Custom file identifier. If None, derived from ``file_name``.
+        outputfile_subfix : str, default='summary-epo.csv'
+            Filename suffix for the summary CSV.
+        try_loading : bool, default=True
+            If True, load an existing summary file if available.
+
+        Returns
+        -------
+        None
+        """
         print("Initializing SummaryEpochs object")
         file_name = Path(file_name).stem
         outputfile = file_name + outputfile_subfix
@@ -131,6 +244,7 @@ class SummaryEpochs(Summary):
                              "step",
                              "n_epochs",
                              "n_remaining_epochs",
+                             "n_rejected_epochs",
                              "length", 
                              "%_corrected_data", 
                              "%_bad_data", 
@@ -144,6 +258,21 @@ class SummaryEpochs(Summary):
         self.file_id = file_id
 
     def add_to_summary(self, step, epochs, overwrite=False):
+        """Append one epochs summary row.
+
+        Parameters
+        ----------
+        step : str
+            Processing step label.
+        epochs : mne.BaseEpochs
+            Epochs object whose artifact metrics will be summarized.
+        overwrite : bool, default=False
+            If True, replace an existing row for the same file and step.
+
+        Returns
+        -------
+        None
+        """
         
         if not isinstance(epochs, BaseEpochs):
             raise TypeError("epochs must be an instance of mne.BaseEpochs")
@@ -165,36 +294,82 @@ class SummaryEpochs(Summary):
             bad_channels = np.round(np.sum(epochs.artifacts.BC) / np.size(epochs.artifacts.BC) * 100, 2)
             bad_times = np.round(np.sum(epochs.artifacts.BT) / np.size(epochs.artifacts.BT) * 100, 2)
             bad_epochs = np.round(np.sum(epochs.artifacts.BE) / np.size(epochs.artifacts.BE) * 100, 2)
+            no_of_rejected_epochs = np.sum(epochs.artifacts.BE)
         else:
             corrected_data = np.nan
             bad_data = np.nan
             bad_channels = np.nan
             bad_times = np.nan
             bad_epochs = np.nan
-        
-        self.summary_df.loc[len(self.summary_df)] = [self.file_id, step, no_of_epochs, no_of_remaining_epochs,
+            no_of_rejected_epochs = np.nan
+        self.summary_df.loc[len(self.summary_df)] = [self.file_id, step, no_of_epochs, no_of_remaining_epochs, no_of_rejected_epochs,
                                             length, corrected_data, bad_data, bad_channels, bad_times, bad_epochs]
         
 
 class StdOutLogger():
+    """Redirect standard output to a log file during pipeline execution.
+
+    Parameters
+    ----------
+    output_folder : str | pathlib.Path
+        Directory that will store the log file.
+    file_name : str | pathlib.Path
+        Base filename used to derive the log filename.
+    """
 
     def __init__(self, output_folder, file_name):
+        """Initialize logger paths.
+
+        Parameters
+        ----------
+        output_folder : str | pathlib.Path
+            Destination folder for log output.
+        file_name : str | pathlib.Path
+            Base name used to create the log filename.
+
+        Returns
+        -------
+        None
+        """
         file_name = Path(file_name).stem
         self.output_folder = Path(output_folder)
         self.output_file = f"{file_name}_log.txt"
         self.output_full_path = self.output_folder / self.output_file
 
     def restore_stdout(self):
+        """Reset the log file contents before a new run.
+
+        Returns
+        -------
+        None
+        """
         self.output_folder.mkdir(parents=True, exist_ok=True)
         self.output_full_path.write_text("")
 
     def redirect_stdout_to_file(self, restore=False):
+        """Redirect ``sys.stdout`` to the configured log file.
+
+        Parameters
+        ----------
+        restore : bool, default=False
+            If True, clear the existing log file before redirecting.
+
+        Returns
+        -------
+        None
+        """
         self.output_folder.mkdir(parents=True, exist_ok=True)
         if restore:
             self.restore_stdout()
         sys.stdout = open(self.output_full_path, "w")
 
     def close(self):
+        """Close the redirected standard-output stream.
+
+        Returns
+        -------
+        None
+        """
         sys.stdout.close()
 
 
@@ -225,6 +400,7 @@ def run_preprocessing(input_dir,
                       save_log=True,
                       save_report=True,
                       save_summary=True,
+                      show_figures=False,
                       l_freq=0.10,
                       h_freq=40,
                       l_trans_bandwidth=0.1,
@@ -237,6 +413,91 @@ def run_preprocessing(input_dir,
                       cfg_spline_channels=None,
                       n_jobs=-1,
                       ):
+    """Run the default APICE preprocessing workflow over multiple files.
+
+    Parameters
+    ----------
+    input_dir : str | pathlib.Path
+        Input folder containing raw EEG files, or the BIDS root when
+        ``input_dir_bids`` is True.
+    output_dir : str | pathlib.Path
+        Output folder for preprocessed data, reports, logs, and summaries.
+    input_dir_bids : bool, default=False
+        If True, discover input files as BIDS entries instead of plain files.
+    bids_session : str | None, default=None
+        Optional BIDS session filter.
+    bids_task : str | None, default=None
+        Optional BIDS task filter.
+    bids_run : str | None, default=None
+        Optional BIDS run filter.
+    bids_subject : str | None, default=None
+        Optional BIDS subject filter.
+    bids_extension : str, default='.vhdr'
+        BIDS file extension to select.
+    bids_datatype : str, default='eeg'
+        BIDS datatype selector.
+    bids_suffix : str, default='eeg'
+        BIDS suffix selector.
+    processed_file_pattern : str, default='*-preproc.fif'
+        Pattern used to detect already processed outputs.
+    data_selection_method : str | list[str], default='all'
+        File-selection strategy forwarded to APICE I/O helpers.
+    drop_electrodes : list[str] | None, default=None
+        Channels to remove before preprocessing.
+    picks : str | list | slice, default='eeg'
+        Channels to keep during preprocessing.
+    reference_channels : list[str] | str | None, default=None
+        Reference channels to preserve in artifact handling.
+    crop_times : tuple[float, float] | None, default=None
+        Optional ``(tmin, tmax)`` crop window in seconds.
+    crop_from_beginnning : float | None, default=None
+        Seconds to trim from the start of the recording.
+    crop_from_end : float | None, default=None
+        Seconds to trim from the end of the recording.
+    resample_freq : float | None, default=None
+        Target sampling frequency in Hz.
+    stim_channels_to_annotations : bool, default=True
+        If True, convert stim-channel events to annotations before processing.
+    montage : mne.channels.DigMontage | str | pathlib.Path | None, default=None
+        Montage object, built-in montage name, or path to a montage file.
+    save_log : bool, default=True
+        If True, write one log file per processed recording.
+    save_report : bool, default=True
+        If True, write an HTML report per processed recording.
+    save_summary : bool, default=True
+        If True, write a preprocessing summary CSV.
+    show_figures : bool, default=False
+        If False, disable interactive Matplotlib rendering while each file is
+        processed. This prevents figure windows from popping up during
+        multi-file runs while still allowing report figures to be created.
+    l_freq : float, default=0.10
+        High-pass cutoff frequency in Hz.
+    h_freq : float | None, default=40
+        Low-pass cutoff frequency in Hz.
+    l_trans_bandwidth : float, default=0.1
+        High-pass transition bandwidth.
+    h_trans_bandwidth : float, default=10
+        Low-pass transition bandwidth.
+    cfg_bad_channels_detection : None | str | pathlib.Path | dict, default=None
+        Configuration source for bad-channel detection.
+    cfg_glitches_detection : None | str | pathlib.Path | dict, default=None
+        Configuration source for glitch detection.
+    cfg_target_pca : None | str | pathlib.Path | dict, default=None
+        Configuration source for target-PCA correction.
+    cfg_artifacts_detection : None | str | pathlib.Path | dict, default=None
+        Configuration source for artifact detection.
+    cfg_spline_segments : None | str | pathlib.Path | dict, default=None
+        Configuration source for segment-wise spline correction.
+    cfg_spline_channels : None | str | pathlib.Path | dict, default=None
+        Configuration source for channel-wise spline correction.
+    n_jobs : int, default=-1
+        Number of parallel jobs for compute-intensive steps.
+
+    Returns
+    -------
+    None
+        Writes preprocessing outputs for each selected file.
+    """
     
     # Initialize output folders
     output_dir = Path(output_dir)
@@ -296,30 +557,42 @@ def run_preprocessing(input_dir,
                                         )
             
             # Run APICE default preprocessing pipeline
-            _ = preprocess_apice_default(
-                                        raw,
-                                        file_name=file_name,
-                                        output_dir=output_dir,
-                                        create_report=save_report,
-                                        save_log=save_log,
-                                        save_data=True,
-                                        save_report=save_report,
-                                        save_summary=save_summary,
-                                        reference_channels=reference_channels,
-                                        l_freq=l_freq,
-                                        h_freq=h_freq,
-                                        l_trans_bandwidth=l_trans_bandwidth,
-                                        h_trans_bandwidth=h_trans_bandwidth,
-                                        cfg_bad_channels_detection=cfg_bad_channels_detection,
-                                        cfg_glitches_detection=cfg_glitches_detection,
-                                        cfg_target_pca=cfg_target_pca,
-                                        cfg_artifacts_detection=cfg_artifacts_detection,
-                                        cfg_spline_segments=cfg_spline_segments,
-                                        cfg_spline_channels=cfg_spline_channels,
-                                        n_jobs=n_jobs,
-                                        )
-            
-            plt.close('all')
+            was_interactive = plt.isinteractive()
+            original_backend = plt.get_backend()
+            if not show_figures:
+                plt.close('all')
+                if original_backend.lower() != 'agg':
+                    plt.switch_backend('Agg')
+                plt.ioff()
+            try:
+                _ = preprocess_apice_default(
+                                            raw,
+                                            file_name=file_name,
+                                            output_dir=output_dir,
+                                            create_report=save_report,
+                                            save_log=save_log,
+                                            save_data=True,
+                                            save_report=save_report,
+                                            save_summary=save_summary,
+                                            reference_channels=reference_channels,
+                                            l_freq=l_freq,
+                                            h_freq=h_freq,
+                                            l_trans_bandwidth=l_trans_bandwidth,
+                                            h_trans_bandwidth=h_trans_bandwidth,
+                                            cfg_bad_channels_detection=cfg_bad_channels_detection,
+                                            cfg_glitches_detection=cfg_glitches_detection,
+                                            cfg_target_pca=cfg_target_pca,
+                                            cfg_artifacts_detection=cfg_artifacts_detection,
+                                            cfg_spline_segments=cfg_spline_segments,
+                                            cfg_spline_channels=cfg_spline_channels,
+                                            n_jobs=n_jobs,
+                                            )
+            finally:
+                plt.close('all')
+                if not show_figures and original_backend.lower() != 'agg':
+                    plt.switch_backend(original_backend)
+                if not show_figures and was_interactive:
+                    plt.ion()
             
         except Exception as e:
             print(f"Error processing file {file}: {e}")
@@ -346,6 +619,7 @@ def run_segmentation(input_dir,
                      save_evoked=True,
                      save_report=True,
                      save_summary=True,
+                     show_figures=False,
                      save_cfg=True,
                      set_reference=None,
                      cfg_define_bcbt_epochs=None,
@@ -353,6 +627,72 @@ def run_segmentation(input_dir,
                      cfg_bad_epochs=None,              
                      n_jobs=-1,
                      ):
+    """Run the default APICE segmentation workflow over multiple files.
+
+    Parameters
+    ----------
+    input_dir : str | pathlib.Path
+        Directory containing preprocessed raw FIF files.
+    output_dir : str | pathlib.Path
+        Output folder for epoch files, ERP files, reports, and summaries.
+    kwargs_events_from_annotations_for_segmentation : dict
+        Keyword arguments passed to ``mne.events_from_annotations`` for epoching.
+    event_time_window : tuple[float, float]
+        Epoch time window ``(tmin, tmax)`` in seconds.
+    processed_file_pattern : str, default='*-epo.fif'
+        Pattern used to detect existing segmentation outputs.
+    data_selection_method : str | list[str], default='all'
+        File-selection strategy forwarded to APICE I/O helpers.
+    l_freq : float | None, default=None
+        Optional high-pass cutoff used before segmentation.
+    h_freq : float | None, default=None
+        Optional low-pass cutoff used before segmentation.
+    l_trans_bandwidth : float, default=0.1
+        High-pass transition bandwidth.
+    h_trans_bandwidth : float, default=10
+        Low-pass transition bandwidth.
+    baseline : tuple[float, float] | None, default=None
+        Baseline window passed to MNE epoching.
+    kwargs_events_from_annotations_for_metadata : dict | None, default=None
+        Keyword arguments used to derive metadata events.
+    kwargs_make_metadata : dict | None, default=None
+        Keyword arguments used when creating epoch metadata.
+    evoked_by : bool | str | list[str], default=True
+        Event grouping used when computing evoked responses.
+    save_log : bool, default=True
+        If True, write one segmentation log per processed recording.
+    save_epochs : bool, default=True
+        If True, export epochs to FIF.
+    save_only_good_epochs : bool, default=False
+        If True, export only epochs that survive rejection.
+    save_evoked : bool, default=True
+        If True, export evoked responses.
+    save_report : bool, default=True
+        If True, write an HTML segmentation report.
+    save_summary : bool, default=True
+        If True, write a segmentation summary CSV.
+    show_figures : bool, default=False
+        If False, disable interactive Matplotlib rendering while each file is
+        processed. This prevents figure windows from popping up during
+        multi-file runs while still allowing report figures to be created.
+    save_cfg : bool, default=True
+        If True, save the effective segmentation configurations to JSON.
+    set_reference : dict | None, default=None
+        Reference parameters passed to ``epochs.set_eeg_reference``.
+    cfg_define_bcbt_epochs : None | str | pathlib.Path | dict, default=None
+        Configuration source for epoch-level BC/BT derivation.
+    cfg_spline_channels : None | str | pathlib.Path | dict, default=None
+        Configuration source for spline interpolation of epochs.
+    cfg_bad_epochs : None | str | pathlib.Path | dict, default=None
+        Configuration source for bad-epoch detection.
+    n_jobs : int, default=-1
+        Number of parallel jobs for compute-intensive steps.
+
+    Returns
+    -------
+    None
+        Writes segmentation outputs for each selected file.
+    """
 
     # Initialize output folders
     output_dir = Path(output_dir)
@@ -378,34 +718,46 @@ def run_segmentation(input_dir,
             raw = load_rawapice(file)
 
             # Run segmentation pipeline
-            _ = segment_default_pipeline(raw, 
-                        kwargs_events_from_annotations_for_segmentation, 
-                        event_time_window,
-                        file_name=file.stem,
-                        l_freq=l_freq,
-                        h_freq=h_freq,
-                        l_trans_bandwidth=l_trans_bandwidth,
-                        h_trans_bandwidth=h_trans_bandwidth,
-                        baseline=baseline, 
-                        kwargs_events_from_annotations_for_metadata=kwargs_events_from_annotations_for_metadata,
-                        kwargs_make_metadata=kwargs_make_metadata,                             
-                        evoked_by=evoked_by,
-                        output_dir=output_dir,
-                        save_log=save_log,
-                        save_epochs=save_epochs,
-                        save_only_good_epochs=save_only_good_epochs,
-                        save_evoked=save_evoked,
-                        save_report=save_report,
-                        save_summary=save_summary,
-                        save_cfg=save_cfg,
-                        set_reference=set_reference,
-                        cfg_define_bcbt_epochs=cfg_define_bcbt_epochs,
-                        cfg_spline_channels=cfg_spline_channels,  
-                        cfg_bad_epochs=cfg_bad_epochs,              
-                        n_jobs=n_jobs,
-                        )
-            
-            plt.close('all')
+            was_interactive = plt.isinteractive()
+            original_backend = plt.get_backend()
+            if not show_figures:
+                plt.close('all')
+                if original_backend.lower() != 'agg':
+                    plt.switch_backend('Agg')
+                plt.ioff()
+            try:
+                _ = segment_default_pipeline(raw, 
+                            kwargs_events_from_annotations_for_segmentation, 
+                            event_time_window,
+                            file_name=file.stem,
+                            l_freq=l_freq,
+                            h_freq=h_freq,
+                            l_trans_bandwidth=l_trans_bandwidth,
+                            h_trans_bandwidth=h_trans_bandwidth,
+                            baseline=baseline, 
+                            kwargs_events_from_annotations_for_metadata=kwargs_events_from_annotations_for_metadata,
+                            kwargs_make_metadata=kwargs_make_metadata,                             
+                            evoked_by=evoked_by,
+                            output_dir=output_dir,
+                            save_log=save_log,
+                            save_epochs=save_epochs,
+                            save_only_good_epochs=save_only_good_epochs,
+                            save_evoked=save_evoked,
+                            save_report=save_report,
+                            save_summary=save_summary,
+                            save_cfg=save_cfg,
+                            set_reference=set_reference,
+                            cfg_define_bcbt_epochs=cfg_define_bcbt_epochs,
+                            cfg_spline_channels=cfg_spline_channels,  
+                            cfg_bad_epochs=cfg_bad_epochs,              
+                            n_jobs=n_jobs,
+                            )
+            finally:
+                plt.close('all')
+                if not show_figures and original_backend.lower() != 'agg':
+                    plt.switch_backend(original_backend)
+                if not show_figures and was_interactive:
+                    plt.ion()
             
         except Exception as e:
             print(f"Error processing file {file}: {e}")
@@ -426,6 +778,36 @@ def preprocess_initial_steps(raw,
                           montage=None,
                           head_size=None,
                             ):
+    """Apply structural preprocessing steps before APICE artifact handling.
+
+    Parameters
+    ----------
+    raw : mne.io.BaseRaw
+        Raw object to process.
+    drop_electrodes : list[str] | None, default=None
+        Channels to drop before further processing.
+    picks : str | list | slice, default='eeg'
+        Channels to keep using MNE picking semantics.
+    crop_times : tuple[float, float] | None, default=None
+        Optional ``(tmin, tmax)`` crop window in seconds.
+    crop_from_beginnning : float | None, default=None
+        Seconds to trim from the beginning of the recording.
+    crop_from_end : float | None, default=None
+        Seconds to trim from the end of the recording.
+    resample_freq : float | None, default=None
+        Target sampling frequency in Hz.
+    stim_channels_to_annotations : bool, default=True
+        If True, convert stim-channel events to annotations.
+    montage : mne.channels.DigMontage | str | pathlib.Path | None, default=None
+        Montage object, built-in montage name, or path to a montage file.
+    head_size : float | None, default=None
+        Head-size parameter forwarded to MNE montage creation when relevant.
+
+    Returns
+    -------
+    raw : mne.io.BaseRaw
+        Updated raw object after structural preprocessing.
+    """
 
     # INITIALIZATION -----------------------------------------------------------------------------------------------
 
@@ -520,36 +902,66 @@ def preprocess_apice_default(raw,
                              cfg_spline_channels=None,
                              n_jobs=-1,
                              ):
-    
-    '''
-    Preprocess raw EEG data using the APICE pipeline.
+    """Run the default APICE artifact-detection and correction pipeline.
 
-    Args:
-        - raw (mne.io.Raw): The raw EEG data to preprocess.
-        - output_dir (str or Path): The directory where the preprocessed data, report, and summary will be saved. Required if any of the saving options is True.
-        - save_log (bool): Whether to save the log of the preprocessing steps (default: True).
-        - save_data (bool): Whether to save the preprocessed raw data (default: True).
-        - save_report (bool): Whether to save the preprocessing report (default: True).
-        - save_summary (bool): Whether to save the summary of artifacts detected and corrected during preprocessing (default: True).
-        - l_freq (float): The high-pass filter frequency in Hz. If None, the default value from Filters.l_freq will be used.
-        - h_freq (float): The low-pass filter frequency in Hz. If None, the default value from Filters.h_freq will be used.
-        - drop_electrodes (list of str): List of electrode names to remove from the data (default: None). 
-        - picks (str or array_like or slice): Input for raw.pick(). If picks is provided, only the specified electrodes will be kept and all others will be dropped.
-        - crop_times (tuple of float): Tuple specifying the start and end times (in seconds) to crop the raw data (default: None).
-        - crop_from_beginnning (float): Time in seconds to crop from the beginning of the raw data (default: None).
-        - crop_from_end (float): Time in seconds to crop from the end of the raw data (default: None).
-        - n_jobs (int): The number of parallel jobs to run for computationally intensive steps (default: -1, which means using all available cores).
+    Parameters
+    ----------
+    raw : mne.io.BaseRaw
+        Raw object to preprocess. It must already contain a montage.
+    preprocessed_data_suffix : str, default='-preproc-raw'
+        Suffix appended to exported preprocessed raw files.
+    output_dir : str | pathlib.Path | None, default=None
+        Destination folder for exported artifacts, reports, logs, and summaries.
+    file_name : str | None, default=None
+        Base name used for output files.
+    create_report : bool, default=True
+        If True, build an in-memory MNE report during processing.
+    save_log : bool, default=True
+        If True, write pipeline logs to disk.
+    save_data : bool, default=True
+        If True, export the preprocessed raw file.
+    save_report : bool, default=True
+        If True, save the generated HTML report.
+    save_summary : bool, default=True
+        If True, save preprocessing summary metrics.
+    save_cfg : bool, default=True
+        If True, save the effective preprocessing configurations to JSON.
+    reference_channels : list[str] | str | None, default=None
+        Reference channels to preserve during bad-channel handling.
+    l_freq : float, default=0.10
+        High-pass cutoff frequency in Hz.
+    h_freq : float | None, default=40
+        Low-pass cutoff frequency in Hz.
+    l_trans_bandwidth : float, default=0.1
+        High-pass transition bandwidth.
+    h_trans_bandwidth : float, default=10
+        Low-pass transition bandwidth.
+    cfg_define_bcbt_raw : None | str | pathlib.Path | dict, default=None
+        Configuration source for deriving BC/BT masks from raw BCT masks.
+    cfg_bad_channels_detection : None | str | pathlib.Path | dict, default=None
+        Configuration source for bad-channel detection.
+    cfg_glitches_detection : None | str | pathlib.Path | dict, default=None
+        Configuration source for glitch detection.
+    cfg_target_pca : None | str | pathlib.Path | dict, default=None
+        Configuration source for target-PCA correction.
+    cfg_artifacts_detection : None | str | pathlib.Path | dict, default=None
+        Configuration source for artifact detection.
+    cfg_spline_segments : None | str | pathlib.Path | dict, default=None
+        Configuration source for segment-wise spline correction.
+    cfg_spline_channels : None | str | pathlib.Path | dict, default=None
+        Configuration source for channel-wise spline correction.
+    n_jobs : int, default=-1
+        Number of parallel jobs for compute-intensive steps.
 
-    Returns:
-        - raw (mne.io.Raw): The preprocessed raw EEG data.
-        - summary (SummaryPreprocessing): The summary of artifacts detected and corrected during preprocessing.
-        - report (mne.Report): The preprocessing report containing visualizations and information about the preprocessing steps.
-
-    Note:
-        - The raw data must have a montage set before preprocessing. Please set the montage using raw.set_montage() before calling this function.
-        - If any of the saving options (save_log, save_data, save_report, save_summary) is True, the output_dir must be provided to specify where the files will be saved.
-        - If the reference channel is included in raw, please provide the name of the reference channel in the drop_electrodes list to ensure it is removed during preprocessing.
-    '''
+    Returns
+    -------
+    raw : RawAPICE
+        Preprocessed raw object with artifact masks and corrections applied.
+    summary : SummaryPreprocessing
+        Summary object tracking preprocessing metrics.
+    report : mne.Report | None
+        Generated report, or None when ``create_report`` is False.
+    """
 
         
     # INITIALIZATION -----------------------------------------------------------------------------------------------
@@ -623,8 +1035,7 @@ def preprocess_apice_default(raw,
     print(f"Processing date and time: {datetime.now()}\n\n")
 
     # Initialize object tracking the summary of artifacts
-    if save_summary:
-        summary = SummaryPreprocessing(output_dir_summary, file_name, try_loading=False)
+    summary = SummaryPreprocessing(output_dir_summary, file_name, try_loading=False)
 
     # Initialize reports
     if create_report:
@@ -665,7 +1076,7 @@ def preprocess_apice_default(raw,
         else:
             exclude = []
         try:
-            fig = raw.compute_psd(method='welch',fmax=fmax,exclude=exclude).plot()
+            fig = raw.compute_psd(method='welch',fmax=fmax,exclude=exclude).plot(show=False)
             report.add_figure(fig, "PSD", section="Raw Data", replace=True)
         except Exception as e:
             print(f"Warning: Could not add raw PSD to report: {e}")
@@ -682,28 +1093,24 @@ def preprocess_apice_default(raw,
 
 
     # Detect bad channels
-    raw.detect_bad_channels(cfg_bad_channels_detection=cfg_bad_channels_detection)
+    raw.detect_bad_channels(cfg=cfg_bad_channels_detection)
     raw.deal_with_reference_channels(reference_channels)
-    if save_summary:
-        summary.add_to_summary('artifacts_detection_BadElectrodes', raw, overwrite=True)
+    summary.add_to_summary('artifacts_detection_BadElectrodes', raw, overwrite=True)
 
     # Detect glitches
-    raw.detect_glitches(cfg_glitches_detection=cfg_glitches_detection)
+    raw.detect_glitches(cfg=cfg_glitches_detection)
     raw.deal_with_reference_channels(reference_channels)
-    if save_summary:
-        summary.add_to_summary('artifacts_detection_Glitches', raw, overwrite=True)
+    summary.add_to_summary('artifacts_detection_Glitches', raw, overwrite=True)
 
     # Correct glitches
-    raw.correct_target_pca(cfg_target_pca=cfg_target_pca)
+    raw.correct_target_pca(cfg=cfg_target_pca)
     Filter(raw, l_freq=l_freq, h_freq=None, l_trans_bandwidth=l_trans_bandwidth, h_trans_bandwidth=h_trans_bandwidth, n_jobs=n_jobs)
-    if save_summary:
-        summary.add_to_summary('artifacts_correction_TargetPCA', raw, overwrite=True)
+    summary.add_to_summary('artifacts_correction_TargetPCA', raw, overwrite=True)
 
     # Detect artifacts
-    raw.detect_artifacts(cfg_artifacts_detection=cfg_artifacts_detection)
+    raw.detect_artifacts(cfg=cfg_artifacts_detection)
     raw.deal_with_reference_channels(reference_channels)
-    if save_summary:
-        summary.add_to_summary('artifacts_detection_Artifacts', raw, overwrite=True)
+    summary.add_to_summary('artifacts_detection_Artifacts', raw, overwrite=True)
 
     # Create a figure to visualize the artifact structure
     if create_report:
@@ -722,21 +1129,18 @@ def preprocess_apice_default(raw,
             print(f"Warning: Could not add raw bad-data topomap to report: {e}")
     
     # Correct artifacts using spherical spline interpolation per segment
-    raw.correct_spline_segments(cfg_spline_segments=cfg_spline_segments)
+    raw.correct_spline_segments(cfg=cfg_spline_segments)
     Filter(raw, l_freq=l_freq, h_freq=None, l_trans_bandwidth=l_trans_bandwidth, h_trans_bandwidth=h_trans_bandwidth, n_jobs=n_jobs)
-    if save_summary:
-        summary.add_to_summary('artifacts_correction_Segments', raw, overwrite=True)
+    summary.add_to_summary('artifacts_correction_Segments', raw, overwrite=True)
 
     # Correct channels using spherical spline interpolation
-    raw.correct_spline_channels(cfg_spline_channels=cfg_spline_channels)
-    if save_summary:
-        summary.add_to_summary('artifacts_correction_BadChannels', raw, overwrite=True)
+    raw.correct_spline_channels(cfg=cfg_spline_channels)
+    summary.add_to_summary('artifacts_correction_BadChannels', raw, overwrite=True)
 
     # Re-detect bad data after correction to check if there are still bad channels or time segments that need to be marked as bad after the correction
-    raw.detect_artifacts(cfg_artifacts_detection=cfg_artifacts_detection)
+    raw.detect_artifacts(cfg=cfg_artifacts_detection)
     raw.deal_with_reference_channels(reference_channels)    
-    if save_summary:
-        summary.add_to_summary('artifacts_detection_ArtifactsPostCorrection', raw, overwrite=True)
+    summary.add_to_summary('artifacts_detection_ArtifactsPostCorrection', raw, overwrite=True)
 
     if create_report:
         try:
@@ -761,7 +1165,7 @@ def preprocess_apice_default(raw,
         else:
             exclude = []
         try:
-            fig = raw.compute_psd(method='welch',fmax=fmax,exclude=exclude).plot()
+            fig = raw.compute_psd(method='welch',fmax=fmax,exclude=exclude).plot(show=False)
             report.add_figure(fig, "PSD", section="Preprocessed Raw Data", replace=True)
         except Exception as e:
             print(f"Warning: Could not add preprocessed PSD to report: {e}")
@@ -782,15 +1186,24 @@ def preprocess_apice_default(raw,
         except Exception as e:
             print(f"Warning: Could not add preprocessed bad-data topomap to report: {e}")
 
+    # Add a plot showing the amount of rejected data
+    if create_report:
+        try:
+            fig = plot_summary(summary.summary_df, metrics = ["%_corrected_data", "%_bad_data", "%_bad_channels", "%_bad_times"])
+            report.add_figure(fig, "Rejected Data Summary", section="Preprocessed Raw Data", replace=True)
+        except Exception as e:
+            print(f"Warning: Could not add preprocessed rejected-data summary to report: {e}")
 
     # EXPORT DATA -----------------------------------------------------------------------------------------------
     
     # Save preprocessed raw
     if save_data:
+        print("Saving preprocessed raw data")
         raw.export(file_name, output_dir, data_suffix=preprocessed_data_suffix)
 
     # Save summary file
     if save_summary:
+        print("Saving preprocessing summary")
         output_dir_summary.mkdir(exist_ok=True)
         summary.save()
 
@@ -803,6 +1216,7 @@ def preprocess_apice_default(raw,
 
     # Save the configurations used for preprocessing
     if save_cfg:
+        print("Saving preprocessing configurations")
         cfg_to_save = {
             "cfg_bad_channels_detection": cfg_bad_channels_detection,
             "cfg_glitches_detection": cfg_glitches_detection,
@@ -853,6 +1267,74 @@ def segment_default_pipeline(raw,
                    cfg_bad_epochs=None,              
                    n_jobs=-1,
                    ):
+    """Run epoching, interpolation, bad-epoch marking, and ERP computation.
+
+    Parameters
+    ----------
+    raw : RawAPICE
+        Preprocessed raw object ready for segmentation.
+    kwargs_events_from_annotations_for_segmentation : dict
+        Keyword arguments passed to ``mne.events_from_annotations`` for epoching.
+    event_time_window : tuple[float, float]
+        Epoch time window ``(tmin, tmax)`` in seconds.
+    file_name : str | None, default=None
+        Base name used for exported files.
+    l_freq : float | None, default=None
+        Optional high-pass cutoff before segmentation.
+    h_freq : float | None, default=None
+        Optional low-pass cutoff before segmentation.
+    l_trans_bandwidth : float, default=0.1
+        High-pass transition bandwidth.
+    h_trans_bandwidth : float, default=10
+        Low-pass transition bandwidth.
+    baseline : tuple[float, float] | None, default=None
+        Baseline correction window passed to MNE epoching.
+    kwargs_events_from_annotations_for_metadata : dict | None, default=None
+        Event selection kwargs used to build metadata.
+    kwargs_make_metadata : dict | None, default=None
+        Keyword arguments forwarded to metadata generation.
+    evoked_by : str | list[str] | None, default='all'
+        Grouping used when computing evoked responses.
+    output_dir : str | pathlib.Path | None, default=None
+        Destination folder for exported segmentation outputs.
+    create_report : bool, default=True
+        If True, build an in-memory MNE report during processing.
+    save_log : bool, default=True
+        If True, write pipeline logs to disk.
+    save_epochs : bool, default=True
+        If True, export epochs to FIF.
+    save_only_good_epochs : bool, default=False
+        If True, export only epochs that remain after rejection.
+    save_evoked : bool, default=True
+        If True, export evoked responses.
+    save_report : bool, default=True
+        If True, save the generated HTML report.
+    save_summary : bool, default=True
+        If True, save segmentation summary metrics.
+    save_cfg : bool, default=True
+        If True, save the effective segmentation configurations to JSON.
+    set_reference : dict | None, default=None
+        Reference parameters passed to ``epochs.set_eeg_reference``.
+    cfg_define_bcbt_epochs : None | str | pathlib.Path | dict, default=None
+        Configuration source for epoch-level BC/BT derivation.
+    cfg_spline_channels : None | str | pathlib.Path | dict, default=None
+        Configuration source for channel-wise spline interpolation.
+    cfg_bad_epochs : None | str | pathlib.Path | dict, default=None
+        Configuration source for bad-epoch detection.
+    n_jobs : int, default=-1
+        Number of parallel jobs for compute-intensive steps.
+
+    Returns
+    -------
+    epochs : EpochsAPICE
+        Segmented data with updated artifact masks.
+    evokeds : mne.Evoked | dict | None
+        Evoked response object(s) computed from good epochs.
+    summary : SummaryEpochs
+        Summary object tracking segmentation metrics.
+    report : mne.Report | None
+        Generated report, or None when ``create_report`` is False.
+    """
 
     # INITIALIZATION -----------------------------------------------------------------------------------------------
 
@@ -903,8 +1385,7 @@ def segment_default_pipeline(raw,
             output_dir_summary.mkdir(exist_ok=True)
 
     # Initialize object tracking the summary of artifacts
-    if save_summary:
-        summary = SummaryEpochs(output_dir_summary, file_name, try_loading=False)
+    summary = SummaryEpochs(output_dir_summary, file_name, try_loading=False)
 
     # Initialize object for logging
     if save_log: 
@@ -1003,6 +1484,14 @@ def segment_default_pipeline(raw,
         except Exception as e:
             print(f"Warning: Could not add epochs bad-data topomap to report: {e}")
 
+    # Add a plot showing the amount of rejected data
+    if create_report:
+        try:
+            fig = plot_summary(summary.summary_df, metrics = ["%_corrected_data", "%_bad_data", "%_bad_channels", "%_bad_times", "%_bad_epochs"])
+            report.add_figure(fig, "Rejected Data Summary", section="Epochs", replace=True)
+        except Exception as e:
+            print(f"Warning: Could not add rejected data summary to report: {e}")
+
     # Add evokeds in the report
     if create_report:
         if evoked_by is None:
@@ -1017,7 +1506,7 @@ def segment_default_pipeline(raw,
             except Exception as e:
                 print(f"Warning: Could not add evoked responses {key} to report: {e}")
                 try:
-                    fig = evoked.plot()
+                    fig = evoked.plot(show=False)
                     report.add_figure(fig, f"Evoked responses {key}", section="Evoked responses", replace=True)
                 except Exception as fig_err:
                     print(f"Warning: Could not add fallback evoked figure {key} to report: {fig_err}")
@@ -1095,6 +1584,20 @@ def segment_default_pipeline(raw,
 
 
 def get_stim_duration(raw, threshold=0.01):
+    """Estimate a default annotation duration from stim channels.
+
+    Parameters
+    ----------
+    raw : mne.io.BaseRaw
+        Raw object containing one or more stim channels.
+    threshold : float, default=0.01
+        Minimum stim amplitude considered active.
+
+    Returns
+    -------
+    duration : float
+        Maximum detected stim duration in seconds.
+    """
 
     stim_data = raw.copy().pick('stim').get_data()    
     above_baseline = np.where(stim_data > threshold, 1, 0)
@@ -1103,6 +1606,18 @@ def get_stim_duration(raw, threshold=0.01):
     return np.max(durations)
     
 def convert_stim_channels_to_annotations(raw):
+    """Convert stim-channel events into MNE annotations.
+
+    Parameters
+    ----------
+    raw : mne.io.BaseRaw
+        Raw object whose stim channels will be translated into annotations.
+
+    Returns
+    -------
+    None
+        Updates ``raw.annotations`` in place.
+    """
     # Get a copy of the original annotations
     df_annotations = raw.annotations.to_data_frame(time_format=None)
     
@@ -1164,6 +1679,32 @@ def generate_metadata_for_epochs(raw,
                  keep_first=None, 
                  keep_last=None,
                  ):
+    """Generate an epoch metadata dataframe from raw annotations.
+
+    Parameters
+    ----------
+    raw : mne.io.BaseRaw
+        Raw object providing annotations and sampling information.
+    kwargs_events_from_annotations_for_metadata : dict, default={}
+        Keyword arguments used to derive metadata events.
+    kwargs_events_from_annotations_for_segmentation : dict, default={}
+        Keyword arguments used to derive segmentation events.
+    columns_events_to_keep : list[str] | None, default=None
+        Optional subset of metadata columns to retain.
+    tmin : float, default=-0.5
+        Metadata window start in seconds.
+    tmax : float, default=0.5
+        Metadata window end in seconds.
+    keep_first : str | None, default=None
+        Forwarded to ``mne.epochs.make_metadata``.
+    keep_last : str | None, default=None
+        Forwarded to ``mne.epochs.make_metadata``.
+
+    Returns
+    -------
+    metadata : pandas.DataFrame
+        Metadata table aligned with segmentation events.
+    """
     
     # Get events, and event ids for segmentation
     events_segm, event_id_segm = mne.events_from_annotations(raw, **kwargs_events_from_annotations_for_segmentation)
@@ -1204,38 +1745,45 @@ def compute_epochs_and_evoked(raw,
                  cfg_spline_channels=None,
                  cfg_bad_epochs=None,
                  summary=None):
-    """
-    Segments continuous EEG data, applies artifact correction, and computes evoked responses.
+    """Segment continuous data, mark bad epochs, and compute evoked responses.
 
-    This function performs several steps on EEG data: it segments the data into epochs based on specified events, 
-    applies artifact correction, defines and removes bad epochs, re-references the data, and computes the 
-    evoked responses.
+    Parameters
+    ----------
+    raw : RawAPICE
+        Preprocessed raw object containing annotations and artifact masks.
+    kwargs_events_from_annotations : dict, default={}
+        Keyword arguments passed to ``mne.events_from_annotations``.
+    metadata : pandas.DataFrame | None, default=None
+        Optional metadata aligned with the requested epochs.
+    tmin : float, default=-0.2
+        Epoch start relative to event onset in seconds.
+    tmax : float, default=0.5
+        Epoch end relative to event onset in seconds.
+    n_jobs : int, default=-1
+        Number of parallel jobs for correction steps.
+    baseline : tuple[float, float] | None, default=None
+        Baseline correction window for MNE epoching.
+    evoked_by : str | list[str] | None, default='all'
+        Grouping used when computing evoked responses.
+    set_reference : dict | None, default=None
+        Reference parameters passed to ``epochs.set_eeg_reference``.
+    cfg_define_bcbt_epochs : None | str | pathlib.Path | dict, default=None
+        Configuration source for epoch-level BC/BT derivation.
+    cfg_spline_channels : None | str | pathlib.Path | dict, default=None
+        Configuration source for channel-wise spline interpolation.
+    cfg_bad_epochs : None | str | pathlib.Path | dict, default=None
+        Configuration source for bad-epoch detection.
+    summary : SummaryEpochs | None, default=None
+        Summary object updated with segmentation metrics.
 
-    Parameters:
-    raw : Raw EEG object
-        Continuous EEG data to be processed.
-    event_keys : list
-        Keys identifying the events around which to segment the data.
-    tmin : float
-        Start time before the event in seconds.
-    tmax : float
-        End time after the event in seconds.
-    baseline : tuple, optional
-        Time window for baseline correction (start, end) in seconds. Defaults to None.
-    evoked_by : str, list or None, optional
-        Specifies how to compute evoked responses. Can be "all" to compute a single averaged response,
-        a string or list of strings specifying an event type to compute evoked responses for that event, or None to skip evoked computation.
-        Defaults to "all".
-    summary : Summary object, optional
-        The summary object to update with segmentation information. Defaults to None.
-    set_reference : None or dictionary, optional
-        The parameters for the mne.io.Epochs.set_eeg_reference method. Defaults to None.
-
-    Returns:
-    epochs : mne.Epochs object
-        The processed epochs after segmentation, artifact correction, and bad epoch removal.
-    evoked : mne.Evoked or list of mne.Evoked
-        The evoked response(s), either as a single averaged response or separated by event type.
+    Returns
+    -------
+    epochs : EpochsAPICE
+        Segmented epochs with updated artifact masks.
+    evokeds : mne.Evoked | dict | None
+        Evoked response object(s) computed from good epochs.
+    summary : SummaryEpochs | None
+        Updated summary object, or None when no summary was provided.
     """
     # get the configurations 
     cfg_define_bcbt_epochs = get_cfg(cfg_define_bcbt_epochs, 'define_bcbt_epochs_config.json')
@@ -1262,7 +1810,7 @@ def compute_epochs_and_evoked(raw,
         summary.add_to_summary('segmentation_Initial', epochs, overwrite=True)
 
     # Apply spherical spline interpolation for artifact correction and re-define BT and BC after interpolation
-    epochs.correct_spline_channels(cfg_spline_channels=cfg_spline_channels)
+    epochs.correct_spline_channels(cfg=cfg_spline_channels)
     
     # Identify and define bad epochs
     epochs.define_bad_epochs(bad_data=cfg_bad_epochs['bad_data'], 
@@ -1310,4 +1858,20 @@ def compute_epochs_and_evoked(raw,
 
 
 
+def plot_summary(summary_df, metrics = ["%_corrected_data", "%_bad_data", "%_bad_channels", "%_bad_times"]):
 
+    preproc_df = summary_df.melt(id_vars='step', value_vars=metrics, var_name='metric', value_name='value')
+
+    # Do a bar plot using the metrics as hues for each preprocessing step
+    fig, ax = plt.subplots(figsize=(10, 6))
+    sns.barplot(data=preproc_df, x='step', y='value', hue='metric', ax=ax)
+    # draw vertical line to separate steps  
+    for i in range(len(preproc_df['step'].unique()) - 1):
+        ax.axvline(x=i + 0.5, color='gray', linestyle='--')
+    ax.set_title("Preprocessing Metrics by Step")
+    ax.set_ylabel("Percentage")
+    ax.set_xlabel("Preprocessing Step")
+    ax.legend(title="Metric")
+    ax.set_xticklabels(ax.get_xticklabels(), rotation=45)
+
+    return fig

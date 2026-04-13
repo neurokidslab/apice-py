@@ -5,7 +5,16 @@ from pathlib import Path
 
 
 def main():
+
+    # Input Output parameters
+    # ============================================================================================
+
+    # Directory for output configuration files
+    OUTPUT_DIR = r"cfg_output_folder"
+    Path(OUTPUT_DIR).mkdir(parents=True, exist_ok=True)
+
         
+    # ============================================================================================
     # %% Create a default configuration for definig bad epochs
     bad_epochs_cfg = {}
     bad_epochs_cfg['bad_data'] = 0.30
@@ -14,9 +23,10 @@ def main():
     bad_epochs_cfg['lim_dist'] = 2
     bad_epochs_cfg['lim_gfp'] = 2
     # save to json
-    with open(Path(__file__).parent / "default_cfg" / 'detect_bad_epochs_config.json', 'w') as f:
+    with open(Path(OUTPUT_DIR) / 'detect_bad_epochs_config.json', 'w') as f:
         json.dump(bad_epochs_cfg, f, indent=4)
 
+    # ============================================================================================
     # %% Create default configuration for BC anc BT definition
     define_bcbt_cfg = {}
     define_bcbt_cfg['thresh_bad_channels'] = [0.7, 0.5, 0.30]
@@ -25,9 +35,10 @@ def main():
     define_bcbt_cfg['min_bad_time'] = 0.100
     define_bcbt_cfg['mask_time'] = 0
     # save to json
-    with open(Path(__file__).parent / "default_cfg" / 'define_bcbt_raw_config.json', 'w') as f:
+    with open(Path(OUTPUT_DIR) / 'define_bcbt_raw_config.json', 'w') as f:
         json.dump(define_bcbt_cfg, f, indent=4)
 
+    # ============================================================================================
     # %% Create default configuration for BC anc BT definition on epochs
     define_bcbt_cfg = {}
     define_bcbt_cfg['thresh_bad_channels'] = [0.7, 0.5, 0.05]
@@ -36,11 +47,12 @@ def main():
     define_bcbt_cfg['min_bad_time'] = 0.100
     define_bcbt_cfg['mask_time'] = 0
     # save to json
-    with open(Path(__file__).parent / "default_cfg" / 'define_bcbt_epochs_config.json', 'w') as f:
+    with open(Path(OUTPUT_DIR) / 'define_bcbt_epochs_config.json', 'w') as f:
         json.dump(define_bcbt_cfg, f, indent=4)
 
 
-    # %% Create defaoult configuration for artifacts correction
+    # ============================================================================================
+    # %% Create default configuration for artifacts correction
     pca_cfg = {}
     pca_cfg['max_time'] = 0.125
     pca_cfg['components_to_remove'] = None
@@ -52,7 +64,7 @@ def main():
     pca_cfg['splice_method'] = 1
     pca_cfg['save_corrected'] = True
     # save to json
-    with open(Path(__file__).parent / "default_cfg" / 'correction_target_pca_config.json', 'w') as f:
+    with open(Path(OUTPUT_DIR) / 'correction_target_pca_config.json', 'w') as f:
         json.dump(pca_cfg, f, indent=4)
 
     spline_segments_cgf = {}
@@ -66,7 +78,7 @@ def main():
     spline_segments_cgf['parallelize_mode'] = 'auto'
     spline_segments_cgf['save_corrected'] = True
     # save to json
-    with open(Path(__file__).parent / "default_cfg" / 'correction_spline_segments_config.json', 'w') as f:
+    with open(Path(OUTPUT_DIR) / 'correction_spline_segments_config.json', 'w') as f:
         json.dump(spline_segments_cgf, f, indent=4) 
 
     spline_channels_cgf = {}
@@ -74,11 +86,11 @@ def main():
     spline_channels_cgf['p_neighbors'] = 1
     spline_channels_cgf['save_corrected'] = True
     # save to json
-    with open(Path(__file__).parent / "default_cfg" / 'correction_spline_channels_config.json', 'w') as f:
+    with open(Path(OUTPUT_DIR) / 'correction_spline_channels_config.json', 'w') as f:
         json.dump(spline_channels_cgf, f, indent=4)
 
+    # ============================================================================================
     # %% Create the default configuration for bad channels detection and rejection
-    # ---------------------------------------------------------------------------------
     artcfg = ArtifactsConfiguration()
 
     artcfg.add_algorithm_group('bad_channels_basic', max_loops=1, min_rejection=0, define_bcbt=True)
@@ -143,11 +155,12 @@ def main():
     }, post_detection=True)
 
 
-    artcfg.save_to_json(Path(__file__).parent / "default_cfg" / 'detect_bad_channels_config.json')
+    artcfg.save_to_json(Path(OUTPUT_DIR) / 'detect_bad_channels_config.json')
 
 
+    # ============================================================================================
     # %% Create a default configuration for detecting very bad data segments
-    # ---------------------------------------------------------------------------------
+
     artcfg = ArtifactsConfiguration()   
     
     artcfg.add_algorithm_group('huge_amplitude_abs', max_loops=1, min_rejection=0, define_bcbt=True)
@@ -195,13 +208,13 @@ def main():
         'mask_length': 0.500,
     }, post_detection=True)
 
-    artcfg.save_to_json(Path(__file__).parent / "default_cfg" / 'detect_artifacts_huge_config.json')
+    artcfg.save_to_json(Path(OUTPUT_DIR) / 'detect_artifacts_huge_config.json')
 
+    # ============================================================================================
     # %% Create a default configuration for detecting glitches
-    # ---------------------------------------------------------------------------------
     
     artcfg_huge = ArtifactsConfiguration()   
-    artcfg_huge.load_from_json(Path(__file__).parent / "default_cfg" / 'detect_artifacts_huge_config.json')
+    artcfg_huge.load_from_json(Path(OUTPUT_DIR) / 'detect_artifacts_huge_config.json')
 
     artcfg_glitches = ArtifactsConfiguration()
     
@@ -225,10 +238,10 @@ def main():
     }, post_detection=True)
 
     artcfg = concatenate_configurations([artcfg_huge.cfg, artcfg_glitches.cfg])
-    artcfg.save_to_json(Path(__file__).parent / "default_cfg" / 'detect_artifacts_glitches_config.json')
+    artcfg.save_to_json(Path(OUTPUT_DIR) / 'detect_artifacts_glitches_config.json')
 
+    # ============================================================================================
     # %% Create a default configuration for detecting artifacts
-    # ---------------------------------------------------------------------------------
     artcfg = ArtifactsConfiguration()
 
     artcfg.add_algorithm_group('huge_amplitude_abs', max_loops=1, min_rejection=0, define_bcbt=True)
@@ -287,32 +300,6 @@ def main():
         'remove_bc': True,
     }, algorithm_name='MaxChange100ms')
 
-    # artcfg.add_algorithm_group('artifacts_runningaverage', max_loops=3, min_rejection=0.05, define_bcbt=True)
-    # artcfg.add_algorithm('artifacts_runningaverage', 'RunningAverage', {
-    #     'bad_data': None,
-    #     'do_reference_data': False,
-    #     'do_zscore': False,
-    #     'thresh_type': 'outliers_per_channel',
-    #     'thresh_fast': [-2, 2],
-    #     'thresh_diff': [-3, 3],
-    #     'mask': 0,
-    #     'remove_bct': True,
-    #     'remove_bt': True,
-    #     'remove_bc': True,
-    # }, algorithm_name='ArtifactsRunningAverage')
-
-    # artcfg.add_algorithm_group('artifacts_crosselectrodesoutlier', max_loops=1, min_rejection=0, define_bcbt=True)
-    # artcfg.add_algorithm('artifacts_crosselectrodesoutlier', 'CrossElectrodesOutlier', {
-    #     'bad_data': None,
-    #     'time_window':0.020,
-    #     'time_window_step': 0.005,
-    #     'thresh': 2.5,
-    #     'mask': 0,
-    #     'remove_bct': True,
-    #     'remove_bt': True,
-    #     'remove_bc': True,
-    # }, algorithm_name='CrossElectrodesOutlier')
-
     artcfg.add_algorithm_group('artifacts_amplitude_avgref', max_loops=5, min_rejection=0.05, define_bcbt=True)
     artcfg.add_algorithm('artifacts_amplitude_avgref', 'Amplitude', {
         'bad_data': 'replace by nan',
@@ -356,20 +343,6 @@ def main():
         'remove_bc': True,
     }, algorithm_name='MaxChange100msAvgRef')
 
-    # artcfg.add_algorithm_group('artifacts_runningaverage_avgref', max_loops=3, min_rejection=0.05, define_bcbt=True)
-    # artcfg.add_algorithm('artifacts_runningaverage_avgref', 'RunningAverage', {
-    #     'bad_data': 'replace by nan',
-    #     'do_reference_data': True,
-    #     'do_zscore': False,
-    #     'thresh_type': 'outliers_all',
-    #     'thresh_fast': [-2, 2],
-    #     'thresh_diff': [-3, 3],
-    #     'mask': 0,
-    #     'remove_bct': True,
-    #     'remove_bt': True,
-    #     'remove_bc': True,
-    # }, algorithm_name='ArtifactsRunningAverage')
-
     artcfg.add_algorithm_group('artifacts_modify', max_loops=1, min_rejection=0, define_bcbt=True)
     artcfg.add_algorithm('artifacts_modify', 'ShortBadSegments', {
         'time_limit': 0.020,
@@ -384,7 +357,7 @@ def main():
         'time_limit': 0.500,
     }, algorithm_name='ShortGoodSegments', post_detection=True)
 
-    artcfg.save_to_json(Path(__file__).parent / "default_cfg" / 'detect_artifacts_all_config.json')
+    artcfg.save_to_json(Path(OUTPUT_DIR) / 'detect_artifacts_all_config.json')
 
 
 if __name__ == '__main__':

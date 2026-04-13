@@ -1,3 +1,10 @@
+"""Artifact correction algorithms for APICE EEG preprocessing.
+
+This module provides correction methods applied after artifact detection,
+including target PCA-based correction and spherical spline interpolation at
+channel and segment levels.
+"""
+
 # %% LIBRARIES
 import os
 import time
@@ -15,12 +22,19 @@ from apice.utils import (find_true_segments_edges, mask_bad_segments, include_sh
 
 
 def _print_header(header, separator="="):
-    """
-    Print a header with separator lines of the same length.
+    """Print a title wrapped by repeated separator lines.
 
-    Args:
-        header (str): The header text to be printed.
-        separator (str, optional): The character used to create separator lines. Defaults to "-".
+    Parameters
+    ----------
+    header : str
+        Header text to display.
+    separator : str, default='='
+        Single character (or string) repeated to form the border line.
+
+    Returns
+    -------
+    None
+        Prints formatted text to stdout.
     """
     # Calculate the length of the header text
     header_length = len(header)
@@ -41,6 +55,31 @@ def _print_header(header, separator="="):
 # %% FUNCTIONS FOR SPLICING
 
 def _splice_segments(data, bad_if, epoch_if, bct=None, bt=None, bc=None, method=1):
+    """Splice corrected segments to reduce discontinuities at segment borders.
+
+    Parameters
+    ----------
+    data : numpy.ndarray
+        Input data array with shape (channels, samples) or (samples,).
+    bad_if : numpy.ndarray
+        Array of segment start/end sample indices to splice.
+    epoch_if : numpy.ndarray
+        Epoch boundaries as start/end sample indices.
+    bct : numpy.ndarray | None, default=None
+        Bad-channel-time mask.
+    bt : numpy.ndarray | None, default=None
+        Bad-time mask.
+    bc : numpy.ndarray | None, default=None
+        Bad-channel mask.
+    method : int | None, default=1
+        Splicing strategy. ``1`` applies linear alignment, ``None`` disables
+        splicing.
+
+    Returns
+    -------
+    dN : numpy.ndarray
+        Spliced data with reduced boundary jumps.
+    """
     if not method:
         dN = data
         print('Not splicing for alingment was performed')
@@ -52,11 +91,29 @@ def _splice_segments(data, bad_if, epoch_if, bct=None, bt=None, bc=None, method=
 
 
 def _prepare_data_for_splicing(data, bad_if, epoch_if, bct, bt, bc):
-    
-    '''
-    data : data as a 1 or 2 dimensional array
-    
-    '''
+    """Normalize splicing inputs to canonical shapes and masks.
+
+    Parameters
+    ----------
+    data : numpy.ndarray
+        Data as 1D or 2D array.
+    bad_if : numpy.ndarray
+        Bad segment boundaries.
+    epoch_if : numpy.ndarray
+        Epoch boundaries.
+    bct : numpy.ndarray | None
+        Bad-channel-time mask.
+    bt : numpy.ndarray | None
+        Bad-time mask.
+    bc : numpy.ndarray | None
+        Bad-channel mask.
+
+    Returns
+    -------
+    tuple
+        Normalized data/masks and segment boundary vectors used by
+        splicing functions.
+    """
     if np.size(np.shape(data)) == 1:
         data_ = np.reshape(data, (1, np.size(data)))
     elif np.size(np.shape(data)) == 2:
@@ -98,11 +155,28 @@ def _prepare_data_for_splicing(data, bad_if, epoch_if, bct, bt, bc):
 
 
 def _splice_segments1(data, bad_if, epoch_if, bct=None, bt=None, bc=None):
-    
-    '''
-    This function splices segments of data at the indicated point by aligning
-    with the previous segment
-    '''
+    """Splice by aligning each segment to the previous segment endpoint.
+
+    Parameters
+    ----------
+    data : numpy.ndarray
+        Data to splice.
+    bad_if : numpy.ndarray
+        Segment start/end boundaries.
+    epoch_if : numpy.ndarray
+        Epoch start/end boundaries.
+    bct : numpy.ndarray | None, default=None
+        Bad-channel-time mask.
+    bt : numpy.ndarray | None, default=None
+        Bad-time mask.
+    bc : numpy.ndarray | None, default=None
+        Bad-channel mask.
+
+    Returns
+    -------
+    dN : numpy.ndarray
+        Data after segment alignment.
+    """
     data, bad_if, epoch_if, bct, bt, bc, I_all, F_all, Epoch_I, Epoch_F = _prepare_data_for_splicing(data, bad_if, epoch_if, bct, bt, bc)
     
     # Splice Segments
@@ -159,6 +233,28 @@ def _splice_segments1(data, bad_if, epoch_if, bct=None, bt=None, bc=None):
 
 # %% FUNCTIONS FOR PCA CORRECTION
 def _find_bad_segments_pca(bad_data, intertime, n_epochs, n_samples, mask, maxtime):
+    """Find artifact segments eligible for target PCA correction.
+
+    Parameters
+    ----------
+    bad_data : numpy.ndarray
+        Flattened bad-data mask.
+    intertime : numpy.ndarray
+        Boolean mask indicating time points eligible for interpolation.
+    n_epochs : int
+        Number of epochs.
+    n_samples : int
+        Number of samples per epoch.
+    mask : int | float
+        Mask radius in samples.
+    maxtime : int | float
+        Maximum allowed segment length in samples.
+
+    Returns
+    -------
+    bad_if : numpy.ndarray
+        Segment boundaries (start/end) in flattened sample indexing.
+    """
 
     bad_if = []
     for ep in np.arange(n_epochs):
@@ -195,6 +291,28 @@ def _find_bad_segments_pca(bad_data, intertime, n_epochs, n_samples, mask, maxti
 
 
 def _target_PCA(data, bad_segment, nSV, vSV, el):
+    """Apply target PCA correction on selected bad segments.
+
+    Parameters
+    ----------
+    data : numpy.ndarray
+        Input data matrix with electrodes x samples.
+    bad_segment : numpy.ndarray
+        Segment boundaries where correction should be applied.
+    nSV : int | None
+        Number of singular vectors/components to remove.
+    vSV : float | None
+        Cumulative explained variance threshold for component removal.
+    el : int | None
+        Electrode index to map corrected output back.
+
+    Returns
+    -------
+    data : numpy.ndarray
+        Corrected data matrix.
+    tC : numpy.ndarray
+        Boolean mask marking corrected time points.
+    """
 
     if el is None or np.size(el) == 0:
         el = np.full(np.shape(data)[0], True)
@@ -245,6 +363,33 @@ from joblib import Parallel, delayed
 from multiprocessing import Process, Manager
 
 def _process_bad_channel(bad_idx, ch_names, ch_names_montage, positions, bad_channel_indices, new_exclude_index, data, distances_matrix):
+    """Interpolate one bad channel using spherical spline neighbors.
+
+    Parameters
+    ----------
+    bad_idx : int
+        Index of the bad channel to interpolate.
+    ch_names : list[str]
+        Channel names in data order.
+    ch_names_montage : list[str]
+        Channel names in montage order.
+    positions : numpy.ndarray
+        Electrode positions.
+    bad_channel_indices : list[int]
+        Indices of all bad channels.
+    new_exclude_index : list[int]
+        Indices to exclude from neighborhood interpolation.
+    data : numpy.ndarray
+        EEG data matrix (channels x samples).
+    distances_matrix : numpy.ndarray
+        Pairwise electrode distance matrix.
+
+    Returns
+    -------
+    tuple[int, numpy.ndarray | None]
+        Channel index and interpolated signal, or ``None`` if interpolation
+        failed.
+    """
     
     #Processes a single bad channel and performs spherical spline interpolation.    
     bad_ch_name = ch_names[bad_idx]
@@ -271,6 +416,32 @@ def _process_bad_channel(bad_idx, ch_names, ch_names_montage, positions, bad_cha
         return bad_idx, None #return the bad_idx and None if there is an error.
 
 def _parallel_interpolate(bad_channel_indices, ch_names, ch_names_montage, positions, new_exclude_index, data, distances_matrix, n_jobs):
+    """Run channel-wise spline interpolation in parallel.
+
+    Parameters
+    ----------
+    bad_channel_indices : list[int]
+        Bad channels to interpolate.
+    ch_names : list[str]
+        Channel names in data order.
+    ch_names_montage : list[str]
+        Channel names in montage order.
+    positions : numpy.ndarray
+        Electrode positions.
+    new_exclude_index : list[int]
+        Indices to exclude from interpolation neighborhoods.
+    data : numpy.ndarray
+        EEG data matrix (channels x samples).
+    distances_matrix : numpy.ndarray
+        Pairwise distance matrix.
+    n_jobs : int
+        Number of parallel workers.
+
+    Returns
+    -------
+    result_interpolation : numpy.ndarray
+        Data matrix with interpolated bad channels replaced when successful.
+    """
     #Parallelizes the spherical spline interpolation for bad channels.
     result_interpolation = np.copy(data) # Create a copy to store the interpolated data
 
@@ -283,27 +454,36 @@ def _parallel_interpolate(bad_channel_indices, ch_names, ch_names_montage, posit
     return result_interpolation
 
 def _do_spherical_spline_interpolation(raw, distances_matrix, positions, adjacency_matrix, bad_neighbor_proportion, bad_channels_to_interpolate, all_bad_channels=None, interpolation_channels=False, n_jobs=-1):
-    """
-    Perform spherical spline interpolation on EEG data to correct for bad channels.
+    """Interpolate selected bad channels using spherical spline interpolation.
 
-    Parameters:
-    raw: MNE raw object
-        The raw EEG data to be interpolated.
-    adjacency_matrix: numpy.ndarray
-        A matrix that defines the which electrodes are neighbors.
-    bad_neighbor_proportion: float
-        The proportion of bad neighboring channels over neighboring channels.
-    bad_channels_to_interpolate: array_like
-        Indices of bad channels that need to be interpolated.
-    all_bad_channels: array_like, optional
-        Indices of all bad channels in the EEG data. Default is None.
-    n_jobs: integer number, optional
-        Number of core used for the parallel computation. Default is all available.
+    Parameters
+    ----------
+    raw : RawAPICE
+        Input recording object containing channel info and data.
+    distances_matrix : numpy.ndarray
+        Pairwise distance matrix between electrodes.
+    positions : numpy.ndarray
+        Electrode Cartesian coordinates.
+    adjacency_matrix : numpy.ndarray
+        Binary adjacency matrix defining neighboring electrodes.
+    bad_neighbor_proportion : float
+        Maximum allowed proportion of bad neighbors for a channel to be
+        considered interpolable.
+    bad_channels_to_interpolate : array_like
+        Boolean/index mask for channels targeted for interpolation.
+    all_bad_channels : array_like | None, default=None
+        Boolean/index mask of all currently bad channels.
+    interpolation_channels : bool, default=False
+        If True, use channel-level interpolation mode.
+    n_jobs : int, default=-1
+        Number of parallel workers.
 
-    Returns:
-    tuple
-        A tuple containing the interpolated EEG data and a boolean array indicating the channels
-        that were interpolated.
+    Returns
+    -------
+    new_interpolated_data : numpy.ndarray
+        Data matrix with interpolated channels replaced when successful.
+    interpolated_bad_channels : numpy.ndarray
+        Boolean vector indicating channels that were interpolated.
     """
 
     # Mark the bad channels in the raw data information
@@ -375,6 +555,22 @@ from numpy.polynomial.legendre import legval
 from scipy.linalg import pinv
 
 def _calc_g(cosang, stiffness=4, n_legendre_terms=7):
+    """Compute Perrin spherical spline kernel values.
+
+    Parameters
+    ----------
+    cosang : numpy.ndarray
+        Cosine of angular distances between electrode positions.
+    stiffness : int, default=4
+        Spline stiffness parameter.
+    n_legendre_terms : int, default=7
+        Number of Legendre polynomial terms.
+
+    Returns
+    -------
+    numpy.ndarray
+        Kernel matrix values used for spherical spline interpolation.
+    """
     factors = [
         (2 * n + 1) / (n**stiffness * (n + 1) ** stiffness * 4 * np.pi)
         for n in range(1, n_legendre_terms + 1)
@@ -389,6 +585,22 @@ def _normalize_vectors(rr):
     return size
 
 def _spherical_spline_inter(good_pos, bad_pos, good_data):
+    """Interpolate bad positions from good channels using spherical splines.
+
+    Parameters
+    ----------
+    good_pos : numpy.ndarray
+        Cartesian coordinates of good electrodes (n_good, 3).
+    bad_pos : numpy.ndarray
+        Cartesian coordinates of target electrodes (n_bad, 3).
+    good_data : numpy.ndarray
+        Data from good electrodes (n_good, n_samples).
+
+    Returns
+    -------
+    interpdata : numpy.ndarray
+        Interpolated data at bad electrode positions.
+    """
 
     _normalize_vectors(good_pos)
     _normalize_vectors(bad_pos)
@@ -417,6 +629,26 @@ def _spherical_spline_inter(good_pos, bad_pos, good_data):
 
 
 def _build_interpolation_matrix_spline(raw, min_good_time, min_intertime, mask_time, min_segment_time):
+    """Build a cleaned interpolation mask for segment-wise spline correction.
+
+    Parameters
+    ----------
+    raw : RawAPICE
+        Input recording with artifact matrices.
+    min_good_time : float
+        Minimum good segment duration (seconds) to preserve.
+    min_intertime : float
+        Minimum bad segment duration (seconds) required for interpolation.
+    mask_time : float
+        Temporal mask extension around bad segments (seconds).
+    min_segment_time : float
+        Minimum segment duration (seconds) used for segment consolidation.
+
+    Returns
+    -------
+    numpy.ndarray
+        Boolean/integer interpolation matrix aligned with ``raw.artifacts.BCT``.
+    """
 
     n_electrodes, n_samples, n_epochs = raw.get_data_size()
     raw_int=raw.copy()
@@ -463,15 +695,23 @@ def _build_interpolation_matrix_spline(raw, min_good_time, min_intertime, mask_t
     
 
 def _modify_rej(rej, segment_samples, max_samples):
+    """Regularize rejection mask within fixed-length segments.
 
-    '''
-    This functions creates a rejection matrix such that in segmnts of lenght 
-    segment_samples channels are eithre included or rejected.
-    
-    - segment_samples : the number of sanmples of each segment
-    - max_samples : the maximun number of rejected samples in a segment that 
-    can be marked as included 
-    '''
+    Parameters
+    ----------
+    rej : numpy.ndarray
+        Rejection matrix (channels x samples).
+    segment_samples : int
+        Number of samples per segment.
+    max_samples : int
+        Maximum rejected samples per segment before marking the full segment
+        as rejected for that channel.
+
+    Returns
+    -------
+    rej_out : numpy.ndarray
+        Regularized rejection matrix.
+    """
     
     n_samples = np.shape(rej)[1]
     
@@ -498,6 +738,22 @@ def _modify_rej(rej, segment_samples, max_samples):
     return rej_out
 
 def _find_segments_interpolation_spline(rej, bad_channels):
+    """Find contiguous interpolation segments and involved channels.
+
+    Parameters
+    ----------
+    rej : numpy.ndarray
+        Rejection matrix (channels x samples).
+    bad_channels : numpy.ndarray
+        Boolean mask of channels excluded from interpolation.
+
+    Returns
+    -------
+    bad_if : numpy.ndarray
+        Segment boundaries (start/end indices).
+    cha_interpolate : list[numpy.ndarray]
+        Channel masks indicating channels to interpolate per segment.
+    """
     
     # remove bad channesl from rejection
     rej[bad_channels,:] = 0
@@ -521,6 +777,18 @@ def _find_segments_interpolation_spline(rej, bad_channels):
     return bad_if, cha_interpolate
 
 def _find_segments_change(rej):
+    """Compute segment boundaries where rejection pattern changes.
+
+    Parameters
+    ----------
+    rej : numpy.ndarray
+        Rejection matrix (channels x samples).
+
+    Returns
+    -------
+    bad_if : numpy.ndarray
+        Segment boundaries (start/end indices).
+    """
     
     # Identify the changes in the number of bad channels
     n_samples = np.shape(rej)[1]
@@ -563,6 +831,16 @@ def _interpolate_spline_segment_task(raw, raw_data_2d, segment_start, segment_en
 # %% CLASSES FOR ARTIFACTS CORRECTION
 
 class ArtCorrection:
+    """Base class for artifact correction algorithms.
+
+    Provides shared parameter handling and bookkeeping utilities used by
+    concrete correction methods.
+
+    Parameters
+    ----------
+    verbose : bool, default=True
+        Whether to print correction progress details.
+    """
 
     def __init__(self, verbose=True):
 
@@ -602,6 +880,29 @@ class ArtCorrection:
         
 
 class TargetPCA(ArtCorrection):
+    """Artifact correction based on target PCA per electrode.
+
+    Parameters
+    ----------
+    max_time : float, default=0.100
+        Maximum segment duration in seconds eligible for correction.
+    components_to_remove : int | None, default=None
+        Fixed number of components to remove.
+    variance_to_remove : float, default=0.98
+        Cumulative variance threshold for component removal.
+    mask_time : float, default=0.05
+        Temporal masking around bad segments in seconds.
+    all_time : str, default='all'
+        Time selection strategy for PCA.
+    all_channel : str, default='no_bad_channel'
+        Channel selection strategy for PCA.
+    all_epochs : str, default='all'
+        Epoch selection strategy for PCA.
+    splice_method : int, default=1
+        Splicing strategy applied after correction.
+    save_corrected : bool, default=True
+        Whether to update correction masks in ``raw.artifacts``.
+    """
 
     def __init__(self, max_time=0.100, components_to_remove=None, variance_to_remove=0.98, mask_time=0.05,
                  all_time='all', all_channel='no_bad_channel', all_epochs='all', splice_method=1, save_corrected=True):
@@ -616,6 +917,18 @@ class TargetPCA(ArtCorrection):
         
 
     def correct(self, raw):         
+        """Run target PCA correction and update artifact bookkeeping.
+
+        Parameters
+        ----------
+        raw : RawAPICE
+            Input object to correct in place.
+
+        Returns
+        -------
+        None
+            Data are modified in place.
+        """
             
         _print_header('Performing Target PCA per Electrode', separator="-")
         
@@ -642,6 +955,36 @@ class TargetPCA(ArtCorrection):
     @staticmethod
     def apply_target_PCA(raw, max_time=0.100, components_to_remove=None, variance_to_remove=0.98, mask_time=0.05,
                  all_time='all', all_channel='no_bad_channel', all_epochs='all', splice_method=1):
+        """Apply target PCA correction and return corrected data plus mask.
+
+        Parameters
+        ----------
+        raw : RawAPICE
+            Input raw/epochs object.
+        max_time : float, default=0.100
+            Maximum segment duration in seconds for PCA correction.
+        components_to_remove : int | None, default=None
+            Number of components to remove.
+        variance_to_remove : float, default=0.98
+            Cumulative explained variance threshold for component removal.
+        mask_time : float, default=0.05
+            Temporal mask in seconds around bad segments.
+        all_time : str, default='all'
+            Time selection mode.
+        all_channel : str, default='no_bad_channel'
+            Channel selection mode.
+        all_epochs : str, default='all'
+            Epoch selection mode.
+        splice_method : int, default=1
+            Splicing method for corrected segments.
+
+        Returns
+        -------
+        data_pca : numpy.ndarray
+            Corrected data.
+        interpolation_matrix : numpy.ndarray
+            Boolean mask of corrected samples.
+        """
 
         # get data size
         n_electrodes, n_samples, n_epochs_all = raw.get_data_size()
@@ -800,6 +1143,21 @@ class TargetPCA(ArtCorrection):
 
 
 class ChannelsSphericalSplineInterpolation(ArtCorrection):
+    """Spherical spline interpolation for globally bad channels.
+
+    Parameters
+    ----------
+    p : float, default=0.3
+        Maximum allowed proportion of bad channels to attempt interpolation.
+    p_neighbors : float, default=1
+        Maximum proportion of bad neighbors accepted for interpolation.
+    save_corrected : bool, default=True
+        Whether to update correction masks in ``raw.artifacts``.
+    verbose : bool, default=True
+        Whether to print progress information.
+    n_jobs : int, default=-1
+        Number of parallel workers.
+    """
 
     def __init__(self, p=0.3, p_neighbors=1, save_corrected=True, verbose=True, n_jobs=-1):
         
@@ -809,6 +1167,18 @@ class ChannelsSphericalSplineInterpolation(ArtCorrection):
         self.params = dict(p=p, p_neighbors=p_neighbors, save_corrected=save_corrected, verbose=verbose, n_jobs=n_jobs)
 
     def correct(self, raw):         
+        """Run channel-wise spline interpolation and update bookkeeping.
+
+        Parameters
+        ----------
+        raw : RawAPICE
+            Input object to correct in place.
+
+        Returns
+        -------
+        None
+            Data are modified in place.
+        """
             
         _print_header('Performing Spherical Spline Interpolation (Bad channels)', separator="-")
         
@@ -825,6 +1195,24 @@ class ChannelsSphericalSplineInterpolation(ArtCorrection):
 
     @staticmethod
     def spherical_spline_interpolation(raw, p, p_neighbors, n_jobs=-1):
+        """Interpolate bad channels using spherical splines.
+
+        Parameters
+        ----------
+        raw : RawAPICE
+            Input raw/epochs object.
+        p : float
+            Maximum proportion of bad channels to allow interpolation.
+        p_neighbors : float
+            Maximum proportion of bad neighbors for eligible interpolation.
+        n_jobs : int, default=-1
+            Number of parallel workers.
+
+        Returns
+        -------
+        tuple[numpy.ndarray, numpy.ndarray]
+            Corrected data and interpolation mask.
+        """
 
         n_electrodes, n_samples, n_epochs = raw.get_data_size()
         good_channels = np.reshape(raw.artifacts.BC,(n_epochs, n_electrodes, 1), order='F')==False
@@ -910,6 +1298,34 @@ class ChannelsSphericalSplineInterpolation(ArtCorrection):
 
 
 class SegmentSphericalSplineInterpolation(ArtCorrection):
+    """Spherical spline interpolation applied on bad temporal segments.
+
+    Parameters
+    ----------
+    n_jobs : int, default=-1
+        Number of parallel workers.
+    p : float, default=0.5
+        Maximum proportion of bad channels allowed for interpolation per
+        segment.
+    p_neighbors : float, default=1
+        Maximum proportion of bad neighbors for interpolation eligibility.
+    min_good_time : float, default=1.00
+        Minimum good segment duration in seconds.
+    min_intertime : float, default=0.100
+        Minimum bad segment duration in seconds for interpolation.
+    mask_time : float, default=0.100
+        Mask duration in seconds around bad segments.
+    min_segment_time : float, default=0.200
+        Minimum segment length in seconds for rejection regularization.
+    splice_method : int, default=1
+        Splicing method after interpolation.
+    save_corrected : bool, default=True
+        Whether to update correction masks in ``raw.artifacts``.
+    verbose : bool, default=True
+        Whether to print progress information.
+    parallelize_mode : {'auto', 'channels', 'segments'}, default='auto'
+        Parallelization strategy.
+    """
 
     def __init__(self, n_jobs=-1, p=0.5, p_neighbors=1, min_good_time=1.00, min_intertime=0.100, mask_time=0.100, 
                  min_segment_time=0.200, splice_method=1, save_corrected=True, verbose=True,
@@ -933,6 +1349,18 @@ class SegmentSphericalSplineInterpolation(ArtCorrection):
                            parallelize_mode=parallelize_mode)
     
     def correct(self, raw):
+        """Run segment-wise spline interpolation and update bookkeeping.
+
+        Parameters
+        ----------
+        raw : RawAPICE
+            Input object to correct in place.
+
+        Returns
+        -------
+        None
+            Data are modified in place.
+        """
         
         _print_header('Performing Spherical Spline Interpolation per Segment', separator="-")
 
@@ -948,6 +1376,18 @@ class SegmentSphericalSplineInterpolation(ArtCorrection):
         print('\n')
 
     def _spherical_spline_interpolation(self, raw):
+        """Interpolate bad channel-time segments using spherical splines.
+
+        Parameters
+        ----------
+        raw : RawAPICE
+            Input raw/epochs object.
+
+        Returns
+        -------
+        tuple[numpy.ndarray, numpy.ndarray]
+            Interpolated data and interpolation mask.
+        """
 
         n_channels, n_samples, n_epochs = raw.get_data_size()
 

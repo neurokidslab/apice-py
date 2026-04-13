@@ -1,48 +1,57 @@
+"""Signal filtering utilities for APICE preprocessing.
+
+This module defines a thin wrapper around MNE filtering methods for applying
+high-pass and low-pass FIR filters to raw EEG recordings.
+"""
+
 # %% CLASSES
 class Filter:
-    """
-    Class for performing bandpass filtering on EEG data using Finite Impulse Response (FIR) filter.
+    """Apply low-pass and high-pass filters to MNE raw data.
 
-    Attributes:
+    Parameters
     ----------
-        - raw (mne.io.Raw): Instance of MNE Raw object containing the EEG data.
-        - low_pass_freq (float): The cutoff frequency for the low-pass filter in Hz.
-        - high_pass_freq (float): The cutoff frequency for the high-pass filter in Hz.
+    raw : mne.io.BaseRaw
+        Raw EEG object to filter in place.
+    h_freq : float | None, default=40.0
+        Low-pass cutoff frequency in Hz. If ``None`` or falsy, low-pass
+        filtering is skipped.
+    l_freq : float | None, default=0.1
+        High-pass cutoff frequency in Hz. If ``None`` or falsy, high-pass
+        filtering is skipped.
+    h_trans_bandwidth : float, default=10
+        Transition bandwidth for low-pass filtering.
+    l_trans_bandwidth : float, default=0.1
+        Transition bandwidth for high-pass filtering.
+    n_jobs : int, default=-1
+        Number of parallel jobs passed to MNE filtering.
 
-    Args:
-    -----
-        - raw (mne.io.Raw): The raw EEG data object that contains the EEG signal and metadata.
-        - low_pass_freq (float): The low-pass filter cutoff frequency in Hz. Defaults to 40.0 Hz, meaning frequencies above this will be attenuated.
-        - high_pass_freq (float): The high-pass filter cutoff frequency in Hz. Defaults to 0.1 Hz, meaning frequencies below this will be attenuated.
-
-    Methods:
+    Returns
     -------
-        apply_high_pass(raw, f_cutoff=0.1):
-            Applies a high-pass filter to the EEG data to remove frequencies below the cutoff frequency.
-            Args:
-                - raw (mne.io.Raw): The raw EEG data object to filter.
-                - f_cutoff (float): The cutoff frequency for the high-pass filter in Hz; defaults to 0.1 Hz.
-            Returns:
-                mne.io.Raw: The filtered EEG data object.
-
-        apply_low_pass(raw, f_cutoff=40.0):
-            Applies a low-pass filter to the EEG data to remove frequencies above the cutoff frequency.
-            Args:
-                - raw (mne.io.Raw): The raw EEG data object to filter.
-                - f_cutoff (float): The cutoff frequency for the low-pass filter in Hz; defaults to 40 Hz.
-            Returns:
-                mne.io.Raw: The filtered EEG data object.
+    None
+        Filtering is applied in place to ``raw`` during initialization.
     """
     def __init__(self, raw, h_freq=40.0, l_freq=0.1, h_trans_bandwidth=10, l_trans_bandwidth=0.1, n_jobs=-1):
-        """
-        Initializes the Filter object with specified low pass and high pass filter cutoff frequencies.
+        """Initialize filtering and apply configured filters in place.
 
-        Args:
-            - raw: Object containing EEG data and information.
-            - h_freq (float): Low pass filter cutoff frequency in Hz. Defaults to 40 Hz.
-            - l_freq (float): High pass filter cutoff frequency in Hz. Defaults to 0.1 Hz.
-            - h_trans_bandwidth (float): Transition bandwidth for the low-pass filter in Hz. Defaults to 10 Hz.
-            - l_trans_bandwidth (float): Transition bandwidth for the high-pass filter in Hz. Defaults to 0.1 Hz.
+        Parameters
+        ----------
+        raw : mne.io.BaseRaw
+            Raw EEG object to filter.
+        h_freq : float | None, default=40.0
+            Low-pass cutoff frequency in Hz.
+        l_freq : float | None, default=0.1
+            High-pass cutoff frequency in Hz.
+        h_trans_bandwidth : float, default=10
+            Transition bandwidth for low-pass filtering.
+        l_trans_bandwidth : float, default=0.1
+            Transition bandwidth for high-pass filtering.
+        n_jobs : int, default=-1
+            Number of parallel jobs used by MNE.
+
+        Returns
+        -------
+        None
+            Filters are applied directly to ``raw``.
         """
 
         if h_freq:
@@ -52,12 +61,23 @@ class Filter:
 
     @staticmethod
     def high_pass(raw, f_cutoff=0.1, l_trans_bandwidth=0.1, n_jobs=-1):
-        """
-        Applies high pass filtering on EEG data.
+        """Apply a high-pass FIR filter to raw data in place.
 
-        Args:
-            - raw: Object containing EEG data and information.
-            - f_cutoff (float): High pass filter cutoff frequency in Hz; defaults to 0.1 Hz.
+        Parameters
+        ----------
+        raw : mne.io.BaseRaw
+            Raw EEG object to filter.
+        f_cutoff : float, default=0.1
+            High-pass cutoff frequency in Hz.
+        l_trans_bandwidth : float, default=0.1
+            Low transition bandwidth passed to ``mne.io.Raw.filter``.
+        n_jobs : int, default=-1
+            Number of jobs used by MNE.
+
+        Returns
+        -------
+        None
+            The operation mutates ``raw``.
         """
 
         raw.load_data().filter(l_freq=f_cutoff, h_freq=None, l_trans_bandwidth=l_trans_bandwidth, n_jobs=n_jobs)
@@ -65,12 +85,23 @@ class Filter:
 
     @staticmethod
     def low_pass(raw, f_cutoff=40.0, h_trans_bandwidth=10, n_jobs=-1):
-        """
-        Applies low pass filtering on EEG data.
+        """Apply a low-pass FIR filter to raw data in place.
 
-        Args:
-            - raw: Object containing EEG data and information.
-            - f_cutoff (float): Low pass filter cutoff frequency in Hz; defaults to 40 Hz.
+        Parameters
+        ----------
+        raw : mne.io.BaseRaw
+            Raw EEG object to filter.
+        f_cutoff : float, default=40.0
+            Low-pass cutoff frequency in Hz.
+        h_trans_bandwidth : float, default=10
+            High transition bandwidth passed to ``mne.io.Raw.filter``.
+        n_jobs : int, default=-1
+            Number of jobs used by MNE.
+
+        Returns
+        -------
+        None
+            The operation mutates ``raw``.
         """
 
         raw.load_data().filter(l_freq=None, h_freq=f_cutoff, h_trans_bandwidth=h_trans_bandwidth, n_jobs=n_jobs)

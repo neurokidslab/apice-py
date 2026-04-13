@@ -1,3 +1,10 @@
+"""Artifact mask structures and visualization helpers.
+
+This module defines utility functions and container classes used to represent
+bad-channel, bad-time, bad-epoch, and corrected-data masks for raw and epoched
+EEG data.
+"""
+
 # %% LIBRARIES
 
 # Import necessary modules
@@ -7,12 +14,41 @@ import numpy as np
 from prettytable import PrettyTable 
 
 # Import specific modules from your project's modules
-from apice.utils import (get_data_size, include_short_bad_segments, reject_short_good_segments, mask_bad_segments)
+from apice.utils import (get_data_size, include_short_bad_segments, reject_short_good_segments, mask_bad_segments, get_cfg)
 
 
 # %% FUNCTIONS
 
 def define_bcbt(bct, thresh_bad_times, thresh_bad_channels, bc=None, bt=None, bc_manual=None):
+    """Infer bad-channel and bad-time masks from bad-channel-time data.
+
+    Parameters
+    ----------
+    bct : numpy.ndarray
+        Bad-channel-time mask with shape ``(n_channels, n_samples)`` for raw
+        data or ``(n_epochs, n_channels, n_samples)`` for epochs.
+    thresh_bad_times : list of float
+        Per-cycle threshold for rejecting channels based on bad-time
+        proportion.
+    thresh_bad_channels : list of float
+        Per-cycle threshold for rejecting time samples based on bad-channel
+        proportion.
+    bc : numpy.ndarray | None, default=None
+        Initial bad-channel mask.
+    bt : numpy.ndarray | None, default=None
+        Initial bad-time mask.
+    bc_manual : numpy.ndarray | None, default=None
+        Manual bad-channel flags to force in the final mask.
+
+    Returns
+    -------
+    bc : numpy.ndarray
+        Updated bad-channel mask.
+    bt : numpy.ndarray
+        Updated bad-time mask.
+    bcbt : numpy.ndarray
+        Combined bad data mask generated from ``bc`` and ``bt``.
+    """
     
     if len(bct.shape) == 2:
         n_epochs = 1
@@ -94,24 +130,35 @@ def define_bcbt(bct, thresh_bad_times, thresh_bad_channels, bc=None, bt=None, bc
 
 
 def plot_artifact_structure(times, ch_names, bct, bc=None, bt=None, be=None, artifact='all', time_step=50, color_scheme='gnuplot', figsize=(12, 6)):
-    """
-    This function plots a visual representation of the artifact structure within EEG data.
-    It allows visualization of different types of artifacts and their occurrences over time or epochs.
+    """Plot artifact masks over channels and time/epochs.
 
-    Args:
-        times (numpy.ndarray): Array of time points corresponding to the EEG data.
-        bct (numpy.ndarray): Binary matrix indicating bad channels and time points.
-        bc (numpy.ndarray, optional): Binary matrix indicating bad channels. Defaults to None.
-        bt (numpy.ndarray, optional): Binary matrix indicating bad time points. Defaults to None.
-        be (numpy.ndarray, optional): Binary matrix indicating bad epochs. Defaults to None.
-        artifact (str): Specifies the type of artifact to plot ('all', 'BCT', 'BT', 'BC', 'BE'). Defaults to 'all'.
-        time_step (int): Time step for x-axis ticks, in seconds. Defaults to 50.
-        color_scheme (str): The color scheme for plotting. Defaults to 'gnuplot'.
-        figsize (tuple): Tuple specifying the figure size (width, height) in inches. Defaults to (8, 6).
-        ch_names (list): List of channel names corresponding to the EEG data.
+    Parameters
+    ----------
+    times : numpy.ndarray
+        Time vector in seconds.
+    ch_names : list of str
+        Channel names.
+    bct : numpy.ndarray
+        Bad-channel-time mask.
+    bc : numpy.ndarray | None, default=None
+        Bad-channel mask.
+    bt : numpy.ndarray | None, default=None
+        Bad-time mask.
+    be : numpy.ndarray | None, default=None
+        Bad-epoch mask.
+    artifact : {'all', 'BCT', 'BT', 'BC', 'BE'}, default='all'
+        Artifact layer to visualize.
+    time_step : int, default=50
+        Tick spacing for time axis in seconds.
+    color_scheme : str, default='gnuplot'
+        Matplotlib colormap name.
+    figsize : tuple, default=(12, 6)
+        Figure size in inches.
 
-    Returns:
-        matplotlib.figure.Figure: The figure object containing the artifact plot.
+    Returns
+    -------
+    fig : matplotlib.figure.Figure
+        Figure containing the artifact heatmap.
     """
 
     # Import necessary modules
@@ -120,18 +167,6 @@ def plot_artifact_structure(times, ch_names, bct, bc=None, bt=None, be=None, art
     
     # Functions
     def prepare_cmap(ax, data, artifact, color_scheme='gnuplot'):
-        """
-        Prepare colormap and colorbar for artifact matrix visualization.
-
-        Args:
-            ax (matplotlib.axes.Axes): The subplot where the artifact matrix will be displayed.
-            data (numpy.ndarray): The artifact matrix to be visualized.
-            artifact (str): Specifies the type of artifact ('all', 'BCT', 'BT', 'BC', 'BE').
-            color_scheme (str): The color scheme for plotting. Defaults to 'gnuplot'.
-
-        Returns:
-            None
-        """
         if artifact == 'all':
             # Define tick labels and colormap for all artifact types
             # tick_labels = ['good', 'bad', 'BT', 'BC', 'BE']
@@ -153,24 +188,7 @@ def plot_artifact_structure(times, ch_names, bct, bc=None, bt=None, be=None, art
                 tick_labels.append(labels[i])
             cax.set_ticklabels(tick_labels)
 
-    def set_ticks(ax, data, t, time_step, sfreq, n_epochs, n_channels, n_samples, ch_names):
-        """
-        Set ticks and labels for the x and y axes of a subplot.
-
-        Args:
-            ax (matplotlib.axes.Axes): The subplot where ticks and labels will be set.
-            data (numpy.ndarray): The data matrix being displayed.
-            time_step (int): Time step for x-axis ticks, in seconds.
-            sfreq (float): The sampling frequency of the data.
-            n_channels (int): Number of electrode channels.
-            ch_names (list): List of channel names.
-            x_label (str): Label for the x-axis. Defaults to 'Time (s)'.
-            artifact (str): Specifies the type of artifact ('all' or specific type).
-
-        Returns:
-            None
-        """
-        
+    def set_ticks(ax, data, t, time_step, sfreq, n_epochs, n_channels, n_samples, ch_names):        
         # Set x-axis ticks and labels
         ax.tick_params(axis="x", bottom=True, top=False, labeltop=False, labelbottom=True)
         if n_epochs > 1:
@@ -275,6 +293,23 @@ def plot_artifact_structure(times, ch_names, bct, bc=None, bt=None, be=None, art
 # %% CLASSE TO HOLD THE ARTIFACTS REJECTION MATRICES
 
 class Artifacts:
+    """Base container for artifact masks and related operations.
+
+    Parameters
+    ----------
+    obj : mne.io.BaseRaw | mne.BaseEpochs
+        Data object the masks are associated with.
+    thresh_bad_channels : list of float, default=[0.7, 0.5, 0.3]
+        Thresholds used to derive bad channels from bad-channel-time masks.
+    thresh_bad_times : list of float, default=[0.7, 0.5, 0.3]
+        Thresholds used to derive bad times from bad-channel-time masks.
+    min_good_time : float, default=0
+        Minimum good segment duration in seconds.
+    min_bad_time : float, default=0
+        Minimum bad segment duration in seconds.
+    mask_time : float, default=0
+        Buffer duration in seconds applied around bad segments.
+    """
 
     def __init__(self, obj, 
                  thresh_bad_channels=[0.7, 0.5, 0.3], thresh_bad_times=[0.7, 0.5, 0.3], 
@@ -328,11 +363,13 @@ class Artifacts:
             print("Artifacts structure already exists. Nothing is initialized.")
 
     def print_summary(self):
-        """
-        Prints a summary of the bad data in the rejection matrices as a percentage of the total data.
-        
-        Returns:
-        - summary: PrettyTable object representing the percentage of bad data for each artifact type.
+        """Summarize mask occupancy percentages in a table.
+
+        Returns
+        -------
+        summary : prettytable.PrettyTable
+            Table with one column per artifact mask and percentage of True
+            values.
         """
         
         # Initialize table
@@ -349,9 +386,36 @@ class Artifacts:
         return summary
     
     def set_bcmanual(self, bc_manual):
+        """Set manual bad-channel flags from channel names.
+
+        Parameters
+        ----------
+        bc_manual : list of str
+            Channel names to mark as manually bad.
+
+        Returns
+        -------
+        None
+        """
         self.BCmanual = np.asarray([ch in bc_manual for ch in self.ch_names])
     
     def update_params(self, **kwargs):
+        """Update artifact-derivation parameters.
+
+        Parameters
+        ----------
+        **kwargs
+            Parameter names and new values.
+
+        Returns
+        -------
+        None
+
+        Raises
+        ------
+        KeyError
+            If a parameter name is not recognized.
+        """
         for key, value in kwargs.items():
             if key in self.params:
                 self.params[key] = value
@@ -379,11 +443,18 @@ class ArtifactsRaw(Artifacts):
     """
 
     def __init__(self, raw, **kwargs):
-        """
-        Initializes the Artifacts object with artifact rejection matrices based on the EEG data.
-        
-        Parameters:
-        - raw: An object containing the EEG data.
+        """Create artifact masks for a raw recording.
+
+        Parameters
+        ----------
+        raw : mne.io.BaseRaw
+            Raw EEG object.
+        **kwargs
+            Additional parameters forwarded to :class:`Artifacts`.
+
+        Returns
+        -------
+        None
         """
 
         # Check if the raw object is an mne.io.BaseRaw object
@@ -393,41 +464,143 @@ class ArtifactsRaw(Artifacts):
         super().__init__(raw, **kwargs)
 
     def update_bc(self, bc):
+        """Merge a new bad-channel mask into ``BC``.
+
+        Parameters
+        ----------
+        bc : array-like
+            Channel-wise bad flags.
+
+        Returns
+        -------
+        None
+        """
         bc = np.reshape(bc,(self.n_channels, 1))
         self.BC = np.logical_or(bc, self.BC)
 
     def update_bt(self, bt):
+        """Merge a new bad-time mask into ``BT``.
+
+        Parameters
+        ----------
+        bt : array-like
+            Time-wise bad flags.
+
+        Returns
+        -------
+        None
+        """
         bt = np.reshape(bt,(1, self.n_samples))
         self.BT = np.logical_or(bt, self.BT)
  
     def set_bc(self, bc):
+        """Set the bad-channel mask.
+
+        Parameters
+        ----------
+        bc : array-like
+            Channel-wise bad flags.
+
+        Returns
+        -------
+        None
+        """
         self.BC = np.reshape(bc,(self.n_channels, 1))
 
     def set_bt(self, bt):
+        """Set the bad-time mask.
+
+        Parameters
+        ----------
+        bt : array-like
+            Time-wise bad flags.
+
+        Returns
+        -------
+        None
+        """
         self.BT = np.reshape(bt,(1, self.n_samples))
         
     def reset_bc(self):
+        """Reset ``BC`` to all-good values.
+
+        Returns
+        -------
+        None
+        """
         self.BC = np.full((self.n_channels, 1), False)
 
     def reset_bt(self):
+        """Reset ``BT`` to all-good values.
+
+        Returns
+        -------
+        None
+        """
         self.BT = np.full((1, self.n_samples), False)
 
     def include_short_bad_segments(self, time_limit):
+        """Restore very short bad segments as good.
+
+        Parameters
+        ----------
+        time_limit : float
+            Maximum bad-segment duration in seconds to restore.
+
+        Returns
+        -------
+        None
+        """
         samples_limit = int(np.round(time_limit*self.sfreq))
         bt, _ = include_short_bad_segments(self.BT.flatten(), samples_limit)
         self.set_bt(bt)
               
     def reject_short_good_segments(self, time_limit):
+        """Reject very short good intervals.
+
+        Parameters
+        ----------
+        time_limit : float
+            Maximum good-segment duration in seconds to reject.
+
+        Returns
+        -------
+        None
+        """
         samples_limit = int(np.round(time_limit*self.sfreq))
         bt, _ = reject_short_good_segments(self.BT.flatten(), samples_limit)
         self.set_bt(bt)
     
     def mask_bad_segments(self, time_mask):
+        """Expand bad segments with a temporal buffer.
+
+        Parameters
+        ----------
+        time_mask : float
+            Buffer duration in seconds added around bad segments.
+
+        Returns
+        -------
+        None
+        """
         mask_samples = int(np.round(time_mask*self.sfreq))
         bt, _ = mask_bad_segments(self.BT.flatten(), mask_samples)
         self.set_bt(bt)
         
     def define_bcbt(self, keep_rejected_previous=None, plot_rejection_matrix=False):
+        """Recompute bad-channel and bad-time masks from ``BCT``.
+
+        Parameters
+        ----------
+        keep_rejected_previous : {'bt', 'bc'} | None, default=None
+            Preserve previously rejected times or channels before recomputing.
+        plot_rejection_matrix : bool, default=False
+            If True, display the resulting artifact structure figure.
+
+        Returns
+        -------
+        None
+        """
         
         print('Identifying bad samples and channels...')
 
@@ -469,10 +642,32 @@ class ArtifactsRaw(Artifacts):
             self.plot_artifact_structure(artifact='all')
                    
     def display_rejected_data(self):
+        """Print summary percentages of rejected time and channels.
+
+        Returns
+        -------
+        None
+        """
         print(f"Total BAD TIMES __________________________________ {np.sum(self.BT) / self.n_samples * 100:.2f}%")
         print(f"Total BAD CHANNELS _______________________________ {np.sum(self.BC) / self.n_channels * 100:.2f}%")
                   
     def plot_artifact_structure(self, artifact='all',time_step=50, color_scheme='gnuplot'):
+        """Plot current raw artifact masks.
+
+        Parameters
+        ----------
+        artifact : {'all', 'BCT', 'BT', 'BC', 'BE'}, default='all'
+            Artifact layer to display.
+        time_step : int, default=50
+            Tick spacing for the time axis.
+        color_scheme : str, default='gnuplot'
+            Matplotlib colormap name.
+
+        Returns
+        -------
+        fig : matplotlib.figure.Figure
+            Artifact structure figure.
+        """
         bct = self.BCT.copy()
         bc = self.BC.copy()
         bt = self.BT.copy()
@@ -503,7 +698,19 @@ class ArtifactsEpochs(Artifacts):
 
 
     def __init__(self, epochs, **kwargs):
-        """Initializes the Artifacts object with artifact rejection matrices based on the EEG data."""
+        """Create artifact masks for an epoched dataset.
+
+        Parameters
+        ----------
+        epochs : mne.BaseEpochs
+            Epoched EEG object.
+        **kwargs
+            Additional parameters forwarded to :class:`Artifacts`.
+
+        Returns
+        -------
+        None
+        """
 
         # Accept all MNE epochs containers (Epochs, EpochsArray, and subclasses).
         base_epochs_type = getattr(mne, "BaseEpochs", mne.epochs.BaseEpochs)
@@ -511,39 +718,53 @@ class ArtifactsEpochs(Artifacts):
             raise ValueError(
                 f"The epochs object must be an instance of mne.BaseEpochs, got {type(epochs)}."
             )
-        super().__init__(epochs, **kwargs)
+        
+        # if kwargs is empyt load default parameters
+        if not kwargs:
+            cfg_define_bcbt_epochs = get_cfg(None, 'define_bcbt_epochs_config.json')
+        super().__init__(epochs, **cfg_define_bcbt_epochs)
 
     def update_bc(self, bc):
+        """Merge a new epoch-wise bad-channel mask into ``BC``."""
         bc = np.reshape(bc,(self.n_epochs, self.n_channels, 1))
         self.BC = np.logical_or(bc, self.BC)
 
     def update_bt(self, bt):
+        """Merge a new epoch-wise bad-time mask into ``BT``."""
         bt = np.reshape(bt,(self.n_epochs, 1, self.n_samples))
         self.BT = np.logical_or(bt, self.BT)
  
     def update_be(self, be):
+        """Merge a new bad-epoch mask into ``BE``."""
         be = np.reshape(be, self.n_epochs)
         self.BE = np.logical_or(be, self.BE)
  
     def set_bc(self, bc):
+        """Set the epoch-wise bad-channel mask."""
         self.BC = np.reshape(bc,(self.n_epochs, self.n_channels, 1))
 
     def set_bt(self, bt):
+        """Set the epoch-wise bad-time mask."""
         self.BT = np.reshape(bt,(self.n_epochs, 1, self.n_samples))
  
     def set_be(self, be):
+        """Set the bad-epoch mask."""
         self.BE = np.reshape(be, self.n_epochs)
 
     def reset_bc(self):
+        """Reset ``BC`` to all-good values."""
         self.BC = np.full((self.n_epochs, self.n_channels, 1), False)
 
     def reset_bt(self):
+        """Reset ``BT`` to all-good values."""
         self.BT = np.full((self.n_epochs, 1, self.n_samples), False)
 
     def reset_be(self):
+        """Reset ``BE`` to all-good values."""
         self.BE = np.full(self.n_epochs, False)
 
     def include_short_bad_segments(self, time_limit):
+        """Restore very short bad segments in each epoch."""
         bt = self.BT.copy()
         samples_limit = int(np.round(time_limit*self.sfreq))
         for ep in range(self.n_epochs): 
@@ -553,6 +774,7 @@ class ArtifactsEpochs(Artifacts):
         self.set_bt(bt)
               
     def reject_short_good_segments(self, time_limit):
+        """Reject very short good intervals in each epoch."""
         bt = self.BT.copy()
         samples_limit = int(np.round(time_limit*self.sfreq))
         for ep in range(self.n_epochs): 
@@ -563,6 +785,7 @@ class ArtifactsEpochs(Artifacts):
 
     
     def mask_bad_segments(self, time_mask):
+        """Expand bad segments in each epoch by a temporal buffer."""
         bt = self.BT.copy()
         mask_samples = int(np.round(time_mask*self.sfreq))
         for ep in range(self.n_epochs): 
@@ -572,6 +795,19 @@ class ArtifactsEpochs(Artifacts):
         self.set_bt(bt)
 
     def define_bcbt(self, keep_rejected_previous=None, plot_rejection_matrix=False):
+        """Recompute epoch-wise ``BC`` and ``BT`` masks from ``BCT``.
+
+        Parameters
+        ----------
+        keep_rejected_previous : {'bt', 'bc'} | None, default=None
+            Preserve previously rejected times or channels before recomputing.
+        plot_rejection_matrix : bool, default=False
+            If True, display the resulting artifact structure figure.
+
+        Returns
+        -------
+        None
+        """
         
         print('Identifying bad samples and channels...')
 
@@ -623,6 +859,7 @@ class ArtifactsEpochs(Artifacts):
        
 
     def display_rejected_data(self): 
+        """Print summary percentages of rejected data across epochs."""
         print(f"Total BAD TIMES __________________________________ {np.sum(self.BT[:]) / (self.n_epochs * self.n_samples) * 100:.2f}%")
         print(f"Total BAD CHANNELS per epoch _____________________ {np.sum(self.BC[:]) / (self.n_epochs *self.n_channels) * 100:.2f}%")
         print(f"Total BAD CHANNELS _______________________________ {np.sum(np.all(self.BC, axis=0)) / self.n_channels * 100:.2f}%")
@@ -630,6 +867,22 @@ class ArtifactsEpochs(Artifacts):
 
 
     def plot_artifact_structure(self, artifact='all',time_step=50, color_scheme='gnuplot'):
+        """Plot current epoch artifact masks.
+
+        Parameters
+        ----------
+        artifact : {'all', 'BCT', 'BT', 'BC', 'BE'}, default='all'
+            Artifact layer to display.
+        time_step : int, default=50
+            Tick spacing for the x-axis.
+        color_scheme : str, default='gnuplot'
+            Matplotlib colormap name.
+
+        Returns
+        -------
+        fig : matplotlib.figure.Figure
+            Artifact structure figure.
+        """
         
         return plot_artifact_structure(self.times, self.ch_names, self.BCT, bc=self.BC, bt=self.BT, be=self.BE, 
                        artifact=artifact, time_step=time_step, color_scheme=color_scheme)

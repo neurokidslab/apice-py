@@ -1,3 +1,8 @@
+"""Input/output helpers for APICE raw and epoched workflows.
+
+This module provides loading wrappers that initialize APICE data structures and
+file-discovery utilities for regular folders and BIDS datasets.
+"""
 
 # %% LIBRARIES
 from pathlib import Path
@@ -14,6 +19,24 @@ from apice.data_structures import RawAPICE, EpochsAPICE
 
 
 def load_rawapice(fname, bt_labels='badtime', bct_labels='artifact', cct_labels='corrected'):
+    """Load raw data and wrap it as ``RawAPICE``.
+
+    Parameters
+    ----------
+    fname : str | pathlib.Path
+        Path to an EEG file readable by MNE.
+    bt_labels : str, default='badtime'
+        Annotation label used for bad-time segments.
+    bct_labels : str, default='artifact'
+        Annotation label used for bad channel-time segments.
+    cct_labels : str, default='corrected'
+        Annotation label used for corrected segments.
+
+    Returns
+    -------
+    raw : RawAPICE
+        Loaded and wrapped raw object.
+    """
     # load the data
     raw = mne.io.read_raw(fname, preload=False, verbose=None)
     # Initialize RawAPICE structure
@@ -21,6 +44,18 @@ def load_rawapice(fname, bt_labels='badtime', bct_labels='artifact', cct_labels=
     return raw
 
 def load_epochapice(fname):
+    """Load epochs data and wrap it as ``EpochsAPICE``.
+
+    Parameters
+    ----------
+    fname : str | pathlib.Path
+        Path to an epochs FIF file.
+
+    Returns
+    -------
+    epochs : EpochsAPICE
+        Loaded and wrapped epochs object.
+    """
     # load the epochs
     epochs = mne.read_epochs(fname)
     # Initialize EpochsAPICE structure
@@ -37,15 +72,19 @@ def load_epochapice(fname):
     return epochs
 
 def is_valid_extension(filename, valid_extensions):
-    """
-    Check if a filename has a valid extension.
+    """Check whether a filename extension belongs to an allowed set.
 
-    Parameters:
-    - filename (str): The filename to check.
-    - valid_extensions (list): A list of valid file extensions.
+    Parameters
+    ----------
+    filename : str | pathlib.Path
+        Filename to validate.
+    valid_extensions : collection of str
+        Allowed extensions without leading dots.
 
-    Returns:
-    - bool: True if the filename has a valid extension, False otherwise.
+    Returns
+    -------
+    is_valid : bool
+        True when extension is accepted.
     """
     return Path(filename).suffix.lstrip(".").lower() in valid_extensions
 
@@ -55,20 +94,31 @@ def get_files_to_process(input_dir,
                          data_selection_method: str ='all',
                          processed_file_pattern='*-preproc.fif',
                          ):
-    """
-    Get a list of files to process based on the specified data selection method.
+    """Return input files to process based on selection strategy.
 
-    Parameters:
-    - input_dir (str): The input directory containing raw data files.
-    - output_dir (str, optional): The output directory where preprocessed files will be saved.
-    - data_selection_method (str | list[str], optional): The method to select files:
-        'all' - All valid files in the input directory.
-        'new' - Files not already processed in the input directory and output directory.
-        list[str] - File patterns used to select files from input_dir.
-    - processed_file_pattern (str, optional): The pattern to identify preprocessed files in the output directory (default: '*-preproc.fif').
+    Parameters
+    ----------
+    input_dir : str | pathlib.Path
+        Directory containing candidate raw files.
+    output_dir : str | pathlib.Path | None, default=None
+        Directory containing processed outputs (required for ``'new'`` mode).
+    data_selection_method : str | list[str], default='all'
+        Selection mode:
+        - ``'all'``: include all valid files.
+        - ``'new'``: include only files without matching processed outputs.
+        - ``list[str]``: include files matching any provided glob pattern.
+    processed_file_pattern : str, default='*-preproc.fif'
+        Output filename pattern used to detect already processed files.
 
-    Returns:
-    - list: A list of file paths to process.
+    Returns
+    -------
+    files_to_process : list of pathlib.Path
+        Sorted list of files selected for processing.
+
+    Raises
+    ------
+    ValueError
+        If directories or selection mode are invalid.
     """
 
     input_dir = Path(input_dir)
@@ -157,17 +207,42 @@ def get_bids_files_to_process(bids_root,
                               output_dir=None, 
                               data_selection_method: str ='all', 
                               processed_file_pattern='*-preproc.fif'):
-    """
-    Get a list of BIDS files to process based on the specified data selection method.
+    """Return BIDS files to process based on selection strategy.
 
-    Parameters:
-    - bids_root (str): The root directory containing BIDS data.
-    - output_dir (str, optional): The output directory where preprocessed files will be saved.
-    - data_selection_method (str, optional): The method to select files:
-        'all' - All valid BIDS files in the input directory.
-        'new' - BIDS files not already processed in the input directory and output directory.
-        'manual' - Manually input BIDS file paths.
-    - processed_file_pattern (str, optional): The pattern to identify preprocessed files in the output directory (default: '*-preproc.fif').
+    Parameters
+    ----------
+    bids_root : str | pathlib.Path
+        Root of the BIDS dataset.
+    session : str | None, default=None
+        Optional BIDS session selector.
+    task : str | None, default=None
+        Optional BIDS task selector.
+    run : str | None, default=None
+        Optional BIDS run selector.
+    subject : str | None, default=None
+        Optional BIDS subject selector.
+    datatype : str, default='eeg'
+        BIDS datatype.
+    suffix : str, default='eeg'
+        BIDS suffix.
+    extension : str, default='.vhdr'
+        File extension to match.
+    output_dir : str | pathlib.Path | None, default=None
+        Directory containing processed outputs (required for ``'new'`` mode).
+    data_selection_method : {'all', 'new'}, default='all'
+        Selection mode.
+    processed_file_pattern : str, default='*-preproc.fif'
+        Output filename pattern used to detect already processed files.
+
+    Returns
+    -------
+    files_to_process : list
+        List of matching ``mne_bids.BIDSPath`` entries.
+
+    Raises
+    ------
+    ValueError
+        If selection mode is invalid or ``output_dir`` is missing in ``'new'`` mode.
     """
 
     if data_selection_method not in ['all', 'new']:

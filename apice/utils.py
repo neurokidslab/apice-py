@@ -1,3 +1,9 @@
+"""Utility helpers used across artifact detection and correction pipelines.
+
+This module centralizes array-shape helpers, boolean segment utilities,
+configuration loading, and small I/O helpers shared by multiple APICE modules.
+"""
+
 import glob
 import os
 import warnings
@@ -7,10 +13,19 @@ from importlib import resources
 from pathlib import Path
 
 def find_true_segments_edges(m):
-    """
-    This function finds the indexs for the starting and ending points of segments with True values.
-    :return idx_i: samples for the starting of the segment
-            idx_f: samples for the ending of the segment
+    """Return start and end indices of contiguous True segments.
+
+    Parameters
+    ----------
+    m : array-like
+        Boolean-like vector where non-zero values are interpreted as True.
+
+    Returns
+    -------
+    idx_i : numpy.ndarray
+        Start indices (inclusive) for each True segment.
+    idx_f : numpy.ndarray
+        End indices (exclusive) for each True segment.
     """
     
     m = np.asarray(m, dtype=int)
@@ -32,6 +47,22 @@ def find_true_segments_edges(m):
     return idx_i, idx_f
 
 def get_onset_and_duration(event_array, time_vector):
+    """Compute onset times and durations of True segments.
+
+    Parameters
+    ----------
+    event_array : array-like
+        Boolean-like vector indicating event presence.
+    time_vector : array-like
+        Time vector in seconds associated with ``event_array`` samples.
+
+    Returns
+    -------
+    onset : numpy.ndarray
+        Onset times in seconds.
+    duration : numpy.ndarray
+        Segment durations in seconds.
+    """
     
     isbad_i, isbad_f = find_true_segments_edges(event_array)
     onset = time_vector[isbad_i]
@@ -42,6 +73,24 @@ def get_onset_and_duration(event_array, time_vector):
     return onset, duration
 
 def reshape_axis_first(m, axis):
+    """Move an axis to the first position and flatten remaining dimensions.
+
+    Parameters
+    ----------
+    m : numpy.ndarray
+        Input array.
+    axis : int
+        Axis to move to the first position before flattening.
+
+    Returns
+    -------
+    m : numpy.ndarray
+        Reshaped array with shape ``(m.shape[axis], -1)``.
+    shape_org : tuple of int
+        Original array shape before transformation.
+    perm_vals : numpy.ndarray
+        Permutation applied to move ``axis`` to the first dimension.
+    """
     shape_org = np.shape(m)
     perm_vals = np.empty((len(shape_org)), dtype=int)
     perm_vals[0] = axis
@@ -52,6 +101,24 @@ def reshape_axis_first(m, axis):
 
 
 def back_to_original_shape(m, axis, shape_org, perm_vals):
+    """Restore data from flattened-first-axis representation to original shape.
+
+    Parameters
+    ----------
+    m : numpy.ndarray
+        Flattened array produced by :func:`reshape_axis_first`.
+    axis : int
+        Original axis that had been moved to first position.
+    shape_org : tuple of int
+        Original array shape.
+    perm_vals : numpy.ndarray
+        Permutation returned by :func:`reshape_axis_first`.
+
+    Returns
+    -------
+    m : numpy.ndarray
+        Array restored to its original dimension order and shape.
+    """
     m = np.reshape(m, np.array(shape_org)[perm_vals])
     perm_vals = np.empty((len(shape_org)), dtype=int)
     perm_vals[axis] = 0
@@ -61,6 +128,22 @@ def back_to_original_shape(m, axis, shape_org, perm_vals):
 
 
 def reject_short_good_segments_1d(bt, samples_limit):
+    """Convert short good intervals into bad intervals in a 1D boolean mask.
+
+    Parameters
+    ----------
+    bt : array-like of bool
+        Boolean vector where True marks bad samples.
+    samples_limit : int
+        Maximum good-segment length (in samples) that will be rejected.
+
+    Returns
+    -------
+    bt_out : numpy.ndarray
+        Updated boolean mask with short good segments rejected.
+    change : numpy.ndarray
+        Boolean vector indicating samples modified by the operation.
+    """
 
     bt_out = bt.copy()==1
     
@@ -85,6 +168,22 @@ def reject_short_good_segments_1d(bt, samples_limit):
         
    
 def include_short_bad_segments_1d(bt, samples_limit):
+    """Convert short bad intervals into good intervals in a 1D boolean mask.
+
+    Parameters
+    ----------
+    bt : array-like of bool
+        Boolean vector where True marks bad samples.
+    samples_limit : int
+        Maximum bad-segment length (in samples) that will be restored.
+
+    Returns
+    -------
+    bt_out : numpy.ndarray
+        Updated boolean mask with short bad segments restored to good.
+    change : numpy.ndarray
+        Boolean vector indicating samples modified by the operation.
+    """
     
     bt_out = bt.copy()==1
     
@@ -105,6 +204,22 @@ def include_short_bad_segments_1d(bt, samples_limit):
     return bt_out, change
 
 def mask_bad_segments_1d(bt, mask_samples):
+    """Expand bad segments in a 1D mask by adding a temporal buffer.
+
+    Parameters
+    ----------
+    bt : array-like of bool
+        Boolean vector where True marks bad samples.
+    mask_samples : float
+        Number of samples to extend before and after each bad segment.
+
+    Returns
+    -------
+    bt_out : numpy.ndarray
+        Updated boolean mask with expanded bad segments.
+    change : numpy.ndarray
+        Boolean vector indicating samples modified by the operation.
+    """
  
     bt_out = bt.copy()==1
 
@@ -135,6 +250,25 @@ def mask_bad_segments_1d(bt, mask_samples):
 
 
 def reject_short_good_segments(m, samples_limit, axis=None):
+    """Reject short good segments along one axis of an array.
+
+    Parameters
+    ----------
+    m : numpy.ndarray
+        Input boolean-like array where True indicates bad samples.
+    samples_limit : int
+        Maximum good-segment length (in samples) to reject.
+    axis : int | None
+        Axis along which segments are processed. If ``None``, the largest
+        dimension is used.
+
+    Returns
+    -------
+    m_out : numpy.ndarray
+        Updated mask with short good segments rejected.
+    change : numpy.ndarray
+        Boolean mask indicating modified positions.
+    """
     
     if len(np.shape(m))==1:
         m_out, change = reject_short_good_segments_1d(m, samples_limit)
@@ -161,6 +295,25 @@ def reject_short_good_segments(m, samples_limit, axis=None):
 
 
 def include_short_bad_segments(m, samples_limit, axis=None):
+    """Restore short bad segments along one axis of an array.
+
+    Parameters
+    ----------
+    m : numpy.ndarray
+        Input boolean-like array where True indicates bad samples.
+    samples_limit : int
+        Maximum bad-segment length (in samples) to restore.
+    axis : int | None
+        Axis along which segments are processed. If ``None``, the largest
+        dimension is used.
+
+    Returns
+    -------
+    m_out : numpy.ndarray
+        Updated mask with short bad segments restored.
+    change : numpy.ndarray
+        Boolean mask indicating modified positions.
+    """
     
     if len(np.shape(m))==1:
         m_out, change = include_short_bad_segments_1d(m, samples_limit)
@@ -187,6 +340,25 @@ def include_short_bad_segments(m, samples_limit, axis=None):
 
 
 def mask_bad_segments(m, mask_samples, axis=None):
+    """Expand bad segments with a buffer along one axis of an array.
+
+    Parameters
+    ----------
+    m : numpy.ndarray
+        Input boolean-like array where True indicates bad samples.
+    mask_samples : float
+        Number of samples to extend before and after each bad segment.
+    axis : int | None
+        Axis along which segments are processed. If ``None``, the largest
+        dimension is used.
+
+    Returns
+    -------
+    m_out : numpy.ndarray
+        Updated mask with buffered bad segments.
+    change : numpy.ndarray
+        Boolean mask indicating modified positions.
+    """
     
     if len(np.shape(m))==1:
         m_out, change = mask_bad_segments_1d(m, mask_samples)
@@ -213,15 +385,25 @@ def mask_bad_segments(m, mask_samples, axis=None):
 
 
 def update_parameters_with_user_inputs(params, new_params):
-    """
-    Update the default parameters with user-provided parameters.
+    """Update default parameters using user-provided values.
 
-    Args:
-        params (dict): The default parameters to be updated.
-        new_params (dict): The user-provided parameters to update the defaults.
+    Parameters
+    ----------
+    params : dict
+        Default parameter dictionary.
+    new_params : dict
+        User parameter dictionary.
 
-    Returns:
-        dict: The updated parameters after merging defaults with user inputs.
+    Returns
+    -------
+    updated_params : dict
+        Merged dictionary where recognized keys are overwritten by
+        ``new_params`` values.
+
+    Warns
+    -----
+    UserWarning
+        If ``new_params`` contains keys that are not recognized.
     """
     updated_params = params.copy()
 
@@ -238,12 +420,19 @@ def update_parameters_with_user_inputs(params, new_params):
 
 
 def print_header(header, separator="="):
-    """
-    Print a header with separator lines of the same length.
+    """Print a text header surrounded by separator lines.
 
-    Args:
-        header (str): The header text to be printed.
-        separator (str, optional): The character used to create separator lines. Defaults to "-".
+    Parameters
+    ----------
+    header : str
+        Header text to print.
+    separator : str, default='='
+        Character repeated to create top and bottom separators.
+
+    Returns
+    -------
+    None
+        This function prints to standard output.
     """
     separator = separator * len(header)
     print("\n" + separator)
@@ -252,22 +441,47 @@ def print_header(header, separator="="):
 
 
 def get_files_in_folder(inputDir, pattern):
+    """Return file names in a folder matching a glob pattern.
+
+    Parameters
+    ----------
+    inputDir : str | pathlib.Path
+        Directory to search.
+    pattern : str
+        Glob pattern (for example ``'*.fif'``).
+
+    Returns
+    -------
+    fileNames : list of str
+        Basename of files matching the pattern.
+    """
     filePattern = os.path.join(inputDir,  pattern)
     matchingFiles = glob.glob(filePattern)
     fileNames = [os.path.basename(file) for file in matchingFiles]
     return fileNames
 
 def get_data_size(obj):
-    """
-    Get the shape of the EEG continuous signal.
+    """Return data dimensions for MNE raw/epochs-like objects.
 
-    Args:
-        - obj (mne.io.Raw or mne.io.Epochs): Object containing the EEG data.
+    Parameters
+    ----------
+    obj : mne.io.BaseRaw | mne.Epochs | Any
+        Object containing EEG data. Objects exposing ``get_data_size`` are
+        accepted and delegated to.
 
-    Returns:
-        - n_channels (int): Number of channels.
-        - n_samples (int): Number of data points per epoch.
-        - n_epochs (int): Number of continuous segments.
+    Returns
+    -------
+    n_channels : int
+        Number of channels.
+    n_samples : int
+        Number of time samples per epoch (or total samples for raw).
+    n_epochs : int
+        Number of epochs. For raw data this value is ``1``.
+
+    Raises
+    ------
+    TypeError
+        If ``obj`` is not an accepted data container.
     """
     import mne
 
@@ -290,6 +504,28 @@ def get_data_size(obj):
 
 
 def get_cfg(cfg, default_cfg):
+    """Load a configuration from default package resources or user input.
+
+    Parameters
+    ----------
+    cfg : None | str | pathlib.Path | dict
+        Configuration source. ``None`` loads the packaged default JSON file,
+        path-like values load JSON from disk, and dictionaries are passed
+        through unchanged.
+    default_cfg : str
+        Default JSON filename inside ``apice/default_cfg`` used when
+        ``cfg is None``.
+
+    Returns
+    -------
+    cfg : dict
+        Configuration dictionary.
+
+    Raises
+    ------
+    ValueError
+        If ``cfg`` is not ``None``, path-like, or dictionary.
+    """
     if cfg is None:
         resource = resources.files(__package__).joinpath("default_cfg", default_cfg)
         with resource.open('r', encoding='utf-8') as f:

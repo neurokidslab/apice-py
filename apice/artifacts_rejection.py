@@ -1,3 +1,9 @@
+"""Artifact-rejection configuration and execution utilities.
+
+This module defines configuration containers, execution summaries, and the
+high-level routine that runs detection and post-detection algorithms.
+"""
+
 # %% LIBRARY
 
 # Import necessary modules
@@ -17,11 +23,39 @@ import apice.artifacts_detection
 # %% CLASS TO CREATE CONFIGURATION FILES FOR ARTIFACTS REJECTION
 
 class ArtifactsConfiguration:
+    """Build and validate algorithm configurations for artifact rejection."""
 
     def __init__(self):
+        """Initialize an empty configuration dictionary.
+
+        Returns
+        -------
+        None
+        """
         self.cfg = {}
 
     def add_algorithm_group(self, group_name, min_loops=0, max_loops=2, min_rejection=0, position=None, define_bcbt=True):
+        """Add a new algorithm group to the configuration.
+
+        Parameters
+        ----------
+        group_name : str
+            Unique group name.
+        min_loops : int, default=0
+            Minimum loops to run before early stopping.
+        max_loops : int, default=2
+            Maximum loops allowed for this group.
+        min_rejection : float, default=0
+            Minimum new-rejection percentage required to continue looping.
+        position : int | None, default=None
+            Group execution order. If ``None``, appends at the end.
+        define_bcbt : bool, default=True
+            If True, recompute BC/BT from BCT after group execution.
+
+        Returns
+        -------
+        None
+        """
 
         if group_name in self.cfg:
             raise ValueError(f"The group name '{group_name}' already exists in the configuration.")
@@ -43,6 +77,27 @@ class ArtifactsConfiguration:
                 self.cfg[key]["position"] += 1
 
     def add_algorithm(self, add_to, class_name, parameters, position=None, algorithm_name=None, post_detection=False):
+        """Add an algorithm entry to an existing group.
+
+        Parameters
+        ----------
+        add_to : str
+            Target group name.
+        class_name : str
+            Detection class name from ``apice.artifacts_detection``.
+        parameters : dict
+            Constructor parameters for the detection class.
+        position : int | None, default=None
+            Position within the group execution order.
+        algorithm_name : str | None, default=None
+            Custom algorithm label. If ``None``, a default name is generated.
+        post_detection : bool, default=False
+            Whether this algorithm runs in the post-detection phase.
+
+        Returns
+        -------
+        None
+        """
 
         if add_to not in self.cfg.keys():
             raise ValueError(f"The group name '{add_to}' does not exist in the configuration. Please add the group first using 'add_algorithm_group' method.")
@@ -77,12 +132,34 @@ class ArtifactsConfiguration:
         self.cfg[add_to]['algorithms'][algorithm_name]['post_detection'] = post_detection
 
     def save_to_json(self, file_path):
+        """Save the current configuration to a JSON file.
+
+        Parameters
+        ----------
+        file_path : str | pathlib.Path
+            Destination path.
+
+        Returns
+        -------
+        None
+        """
         import json
         with open(file_path, 'w') as f:
             json.dump(self.cfg, f, indent=4)
 
 
     def check_configuration(self):
+        """Validate group/algorithm schema and constructor parameter names.
+
+        Returns
+        -------
+        None
+
+        Raises
+        ------
+        ValueError
+            If required keys are missing or class/parameter names are invalid.
+        """
         # This function checks the validity of the configuration
         for group_name, group_info in self.cfg.items():
             if 'position' not in group_info.keys():
@@ -119,16 +196,51 @@ class ArtifactsConfiguration:
                     
 
     def load_from_json(self, file_path):
+        """Load configuration from a JSON file.
+
+        Parameters
+        ----------
+        file_path : str | pathlib.Path
+            Source path.
+
+        Returns
+        -------
+        self : ArtifactsConfiguration
+            Updated configuration instance.
+        """
         import json
         with open(file_path, 'r') as f:
             self.cfg = json.load(f)
         return self
 
     def set_configuration(self, cfg):
+        """Replace configuration with a provided dictionary.
+
+        Parameters
+        ----------
+        cfg : dict
+            Configuration dictionary.
+
+        Returns
+        -------
+        None
+        """
         self.cfg = cfg
 
 
 def concatenate_configurations(list_of_cfgs):
+    """Merge multiple configuration dictionaries into one configuration.
+
+    Parameters
+    ----------
+    list_of_cfgs : list of dict
+        List of configuration dictionaries.
+
+    Returns
+    -------
+    artcfg : ArtifactsConfiguration
+        Merged configuration object.
+    """
     # This function can be implemented to concatenate two configurations, for example to add a new group of algorithms to an existing configuration
     artcfg = ArtifactsConfiguration()
     for cfg in list_of_cfgs:
@@ -143,11 +255,41 @@ def concatenate_configurations(list_of_cfgs):
 # %% CLASS TO CREATE A SUMMARY TABLE FOR THE ARTIFACT REJECTION STEPS
 
 class SummaryTable:
+    """Store and render per-step rejection summaries."""
 
     def __init__(self):
+        """Initialize an empty summary table.
+
+        Returns
+        -------
+        None
+        """
         self.table = pd.DataFrame(columns=["Group", "Algorithm", "Loop", "Post Detection", "Step Rejection (%)", "New Rejection (%)", "Total Rejection (%)"])
 
     def add_row(self, group, algorithm, loop, post_detection, step_rejection, new_rejection, total_rejection):
+        """Append one rejection-summary row.
+
+        Parameters
+        ----------
+        group : str
+            Group name.
+        algorithm : str
+            Algorithm name.
+        loop : int | None
+            Loop index, or ``None`` for post-detection steps.
+        post_detection : bool
+            Whether row belongs to post-detection phase.
+        step_rejection : str | float | None
+            Rejection percentage for this step.
+        new_rejection : str | float | None
+            Newly rejected percentage for this step.
+        total_rejection : str | float | None
+            Total rejected percentage after this step.
+
+        Returns
+        -------
+        None
+        """
         new_row = pd.DataFrame({
             "Group": [group],
             "Algorithm": [algorithm],
@@ -160,6 +302,13 @@ class SummaryTable:
         self.table = pd.concat([self.table, new_row], ignore_index=True)
 
     def __str__(self):
+        """Return a pretty-formatted string representation of the summary table.
+
+        Returns
+        -------
+        table_str : str
+            Human-readable table representation.
+        """
         # convert to a pretty table for better visualization and return the string representation of the table
         print_table = PrettyTable()
         print_table.field_names = self.table.columns.tolist()
@@ -168,6 +317,21 @@ class SummaryTable:
         return print_table.get_string()
     
     def remove_rows(self, group, loop, post_detection=None):
+        """Remove rows matching group/loop (and optional phase).
+
+        Parameters
+        ----------
+        group : str
+            Group name.
+        loop : int | None
+            Loop index to remove.
+        post_detection : bool | None, default=None
+            Restrict removal to phase when provided.
+
+        Returns
+        -------
+        None
+        """
         if post_detection is None:
             self.table = self.table[~((self.table['Group'] == group) & (self.table['Loop'] == loop))]
         else:
@@ -177,11 +341,30 @@ class SummaryTable:
 # %% FUNCTION TO RUN ARTIFACT REJECTION ALGORITHMS
 
 def run_algorithms(raw, cfg: str | Path | dict = None, force_cfg=False, l_freq=None, h_freq=None):
-    """
-    Run artifact rejection algorithms on raw EEG data based on a provided configuration.
-    Args:    
-    - raw: Object containing raw EEG data and information. 
-    - cfg: Configuration dictionary specifying the groups and algorithms to run, or path to a JSON file containing the configuration. If None, the default configuration will be used.
+    """Run configured artifact detection and post-detection pipelines.
+
+    Parameters
+    ----------
+    raw : RawAPICE | EpochsAPICE
+        Data object containing an ``artifacts`` attribute.
+    cfg : str | pathlib.Path | dict | None, default=None
+        Configuration source. If ``None``, loads default JSON configuration.
+    force_cfg : bool, default=False
+        If True, bypass safety checks for ``update_artifacts`` flags.
+    l_freq : float | None, default=None
+        Optional high-pass cutoff used before running algorithms.
+    h_freq : float | None, default=None
+        Optional low-pass cutoff used before running algorithms.
+
+    Returns
+    -------
+    raw : RawAPICE | EpochsAPICE
+        Input object with updated artifact masks.
+
+    Raises
+    ------
+    ValueError
+        If input object or configuration is invalid.
     """
     # If the raw object does not contain an artifacts attribute raise en error
     if not (hasattr(raw, 'artifacts') and isinstance(raw.artifacts, Artifacts)):

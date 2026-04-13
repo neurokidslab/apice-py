@@ -88,6 +88,9 @@ def main():
     # Set to -1 to use all available cores.
     N_JOBS = -1
 
+    # Whether to show figures during preprocessing (e.g., plots of detected bad channels, artifacts, etc.). Set to False to not show figures.
+    SHOW_FIGURES = False
+
 
     # Run the preprocessing pipeline with the specified parameters
     # ============================================================================================
@@ -117,6 +120,7 @@ def main():
         save_log=SAVE_LOG,
         save_report=SAVE_REPORT,
         save_summary=SAVE_SUMMARY,
+        show_figures=SHOW_FIGURES,
         l_freq=L_FREQ,
         h_freq=H_FREQ,
         l_trans_bandwidth=L_TRANS_BANDWIDTH,
