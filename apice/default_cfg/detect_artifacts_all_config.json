@@ -28,7 +28,7 @@
         "position": 2,
         "min_loops": 0,
         "max_loops": 5,
-        "min_rejection": 0.05,
+        "min_rejection": 0.089,
         "define_bcbt": true,
         "algorithms": {
             "ArtifactsAmplitude": {
@@ -56,7 +56,7 @@
         "position": 3,
         "min_loops": 0,
         "max_loops": 5,
-        "min_rejection": 0.05,
+        "min_rejection": 0.089,
         "define_bcbt": true,
         "algorithms": {
             "MaxChange500ms": {
@@ -86,7 +86,7 @@
         "position": 4,
         "min_loops": 0,
         "max_loops": 5,
-        "min_rejection": 0.05,
+        "min_rejection": 0.089,
         "define_bcbt": true,
         "algorithms": {
             "MaxChange100ms": {
@@ -116,7 +116,7 @@
         "position": 5,
         "min_loops": 0,
         "max_loops": 5,
-        "min_rejection": 0.05,
+        "min_rejection": 0.089,
         "define_bcbt": true,
         "algorithms": {
             "ArtifactsAmplitudeAvgRef": {
@@ -144,7 +144,7 @@
         "position": 6,
         "min_loops": 0,
         "max_loops": 5,
-        "min_rejection": 0.05,
+        "min_rejection": 0.089,
         "define_bcbt": true,
         "algorithms": {
             "MaxChange500msAvgRef": {
@@ -174,7 +174,7 @@
         "position": 7,
         "min_loops": 0,
         "max_loops": 5,
-        "min_rejection": 0.05,
+        "min_rejection": 0.089,
         "define_bcbt": true,
         "algorithms": {
             "MaxChange100msAvgRef": {

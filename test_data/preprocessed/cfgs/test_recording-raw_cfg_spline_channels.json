@@ -1,0 +1,6 @@
+{
+    "p": 0.5,
+    "p_neighbors": 1,
+    "save_corrected": true,
+    "n_jobs": -1
+}

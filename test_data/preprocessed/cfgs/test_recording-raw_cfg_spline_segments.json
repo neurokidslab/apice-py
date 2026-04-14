@@ -1,0 +1,12 @@
+{
+    "p": 0.5,
+    "p_neighbors": 1,
+    "min_good_time": 1.0,
+    "min_intertime": 0.05,
+    "mask_time": 0.1,
+    "min_segment_time": 0.25,
+    "splice_method": 1,
+    "parallelize_mode": "auto",
+    "save_corrected": true,
+    "n_jobs": -1
+}

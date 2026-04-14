@@ -879,7 +879,7 @@ def preprocess_initial_steps(raw,
     
 
 def preprocess_apice_default(raw, 
-                             preprocessed_data_suffix='-preproc',
+                             preprocessed_data_suffix='-preproc-raw',
                              output_dir=None,
                              file_name=None,
                              create_report=True,
@@ -1199,7 +1199,8 @@ def preprocess_apice_default(raw,
     # Save preprocessed raw
     if save_data:
         print("Saving preprocessed raw data")
-        raw.export(file_name, output_dir, data_suffix=preprocessed_data_suffix)
+        full_path = output_dir / (file_name + preprocessed_data_suffix + ".fif")
+        raw.export(full_path, overwrite=True)
 
     # Save summary file
     if save_summary:
@@ -1211,7 +1212,7 @@ def preprocess_apice_default(raw,
     if create_report and save_report:
         output_dir_reports.mkdir(exist_ok=True)
         print("Saving report")
-        full_path = output_dir_reports / (file_name + preprocessed_data_suffix + ".html")
+        full_path = output_dir_reports / (file_name + preprocessed_data_suffix + "-report.html")
         report.save(fname=full_path, open_browser=False, overwrite=True)
 
     # Save the configurations used for preprocessing
@@ -1243,6 +1244,7 @@ def preprocess_apice_default(raw,
 def segment_default_pipeline(raw, 
                    kwargs_events_from_annotations_for_segmentation, 
                    event_time_window,
+                   epoch_data_suffix='-epo',
                    file_name=None,
                    l_freq=None,
                    h_freq=None,
@@ -1441,7 +1443,6 @@ def segment_default_pipeline(raw,
                                    kwargs_events_from_annotations=kwargs_events_from_annotations_for_segmentation,
                                    tmin=event_time_window[0], 
                                    tmax=event_time_window[1],
-                                   n_jobs=n_jobs,
                                    baseline=baseline,
                                    metadata=metadata,
                                    evoked_by=evoked_by,
@@ -1516,13 +1517,13 @@ def segment_default_pipeline(raw,
     
     # Save epochs 
     if save_epochs:
-        file_name_epochs = (file_name + '-epo.fif')
+        fullpath_epochs = output_dir / (file_name + epoch_data_suffix + '.fif')
         if save_only_good_epochs:
             epochs_good = epochs.copy()
             epochs_good.remove_bad_epochs()
-            epochs_good.export(file_name_epochs, output_dir)
+            epochs_good.export(fullpath_epochs, overwrite=True)
         else:
-            epochs.export(file_name_epochs, output_dir)
+            epochs.export(fullpath_epochs, overwrite=True)
 
     # Save evoked responses
     if save_evoked:
@@ -1737,7 +1738,6 @@ def compute_epochs_and_evoked(raw,
                  metadata=None,
                  tmin=-0.2, 
                  tmax=0.5, 
-                 n_jobs=-1, 
                  baseline=None, 
                  evoked_by="all", 
                  set_reference=None,
@@ -1759,8 +1759,6 @@ def compute_epochs_and_evoked(raw,
         Epoch start relative to event onset in seconds.
     tmax : float, default=0.5
         Epoch end relative to event onset in seconds.
-    n_jobs : int, default=-1
-        Number of parallel jobs for correction steps.
     baseline : tuple[float, float] | None, default=None
         Baseline correction window for MNE epoching.
     evoked_by : str | list[str] | None, default='all'
@@ -1837,6 +1835,8 @@ def compute_epochs_and_evoked(raw,
     # Remove bad epochs from the data 
     epochs_good = epochs.copy()
     epochs_good.remove_bad_epochs()
+    if summary is not None:
+        summary.add_to_summary('segmentation_GoodEpochs', epochs_good, overwrite=True)
     if evoked_by is not None:
         if evoked_by == "all":
             evokeds = epochs_good.average()

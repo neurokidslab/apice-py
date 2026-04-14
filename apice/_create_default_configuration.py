@@ -34,27 +34,29 @@ def main():
     with open(Path(__file__).parent / "default_cfg" / 'detect_bad_epochs_config.json', 'w') as f:
         json.dump(bad_epochs_cfg, f, indent=4)
 
-    # %% Create default configuration for BC and BT definition
-    define_bcbt_cfg = {}
-    define_bcbt_cfg['thresh_bad_channels'] = [0.7, 0.5, 0.30]
-    define_bcbt_cfg['thresh_bad_times'] = [0.7, 0.5, 0.3]
-    define_bcbt_cfg['min_good_time'] = 1.000
-    define_bcbt_cfg['min_bad_time'] = 0.100
-    define_bcbt_cfg['mask_time'] = 0
-    # save to json
-    with open(Path(__file__).parent / "default_cfg" / 'define_bcbt_raw_config.json', 'w') as f:
-        json.dump(define_bcbt_cfg, f, indent=4)
 
     # %% Create default configuration for BC and BT definition on epochs
-    define_bcbt_cfg = {}
-    define_bcbt_cfg['thresh_bad_channels'] = [0.7, 0.5, 0.05]
-    define_bcbt_cfg['thresh_bad_times'] = [0.7, 0.5, 0.30]
-    define_bcbt_cfg['min_good_time'] = 1.000
-    define_bcbt_cfg['min_bad_time'] = 0.100
-    define_bcbt_cfg['mask_time'] = 0
+    define_bcbt_epoch_cfg = {}
+    define_bcbt_epoch_cfg['thresh_bad_channels'] = [0.7, 0.5, 0.05]
+    define_bcbt_epoch_cfg['thresh_bad_times'] = [0.7, 0.5, 0.30]
+    define_bcbt_epoch_cfg['min_good_time'] = 1.000
+    define_bcbt_epoch_cfg['min_bad_time'] = 0.100
+    define_bcbt_epoch_cfg['mask_time'] = 0
     # save to json
     with open(Path(__file__).parent / "default_cfg" / 'define_bcbt_epochs_config.json', 'w') as f:
-        json.dump(define_bcbt_cfg, f, indent=4)
+        json.dump(define_bcbt_epoch_cfg, f, indent=4)
+
+
+    # %% Create default configuration for BC and BT definition
+    define_bcbt_raw_cfg = {}
+    define_bcbt_raw_cfg['thresh_bad_channels'] = [0.7, 0.5, 0.30]
+    define_bcbt_raw_cfg['thresh_bad_times'] = [0.7, 0.5, 0.3]
+    define_bcbt_raw_cfg['min_good_time'] = 1.000
+    define_bcbt_raw_cfg['min_bad_time'] = 0.100
+    define_bcbt_raw_cfg['mask_time'] = 0
+    # save to json
+    with open(Path(__file__).parent / "default_cfg" / 'define_bcbt_raw_config.json', 'w') as f:
+        json.dump(define_bcbt_raw_cfg, f, indent=4)
 
 
     # %% Create default configuration for artifacts correction
@@ -94,6 +96,17 @@ def main():
     with open(Path(__file__).parent / "default_cfg" / 'correction_spline_channels_config.json', 'w') as f:
         json.dump(spline_channels_cgf, f, indent=4)
 
+
+    # %% Define min_rejection expected based on normal distribution 
+    # ---------------------------------------------------------------------------------
+    # with a 2.0 threshold we expect 0.089% of the data to be above or below the treshold
+    min_rejection_thresh_2_0_IQ = 0.089
+    # with a 2.5 threshold we expect 0.0042% of the data to be above or below the treshold
+    min_rejection_thresh_2_5_IQ = 0.0042
+    # with a 3.0 threshold we expect 0.00011% of the data to be above or below the treshold
+    min_rejection_thresh_3_0_IQ = 0.00011
+
+
     # %% Create the default configuration for bad channels detection and rejection
     # ---------------------------------------------------------------------------------
     artcfg = ArtifactsConfiguration()
@@ -124,7 +137,7 @@ def main():
     }, post_detection=True)
 
 
-    artcfg.add_algorithm_group('bad_channels_power', max_loops=3, min_rejection=0.05, define_bcbt=True)
+    artcfg.add_algorithm_group('bad_channels_power', max_loops=5, min_rejection=min_rejection_thresh_2_0_IQ, define_bcbt=True)
     artcfg.add_algorithm('bad_channels_power', 'Power', {
         'bad_data': None,
         'do_reference_data': False,
@@ -186,7 +199,7 @@ def main():
         'do_reference_data': False,
         'do_zscore': False,
         'thresh_type': 'outliers_per_channel',
-        'thresh': [-5, 5],
+        'thresh': [-4, 4],
         'mask': 0,
         'remove_bct': True,
         'remove_bt': True,
@@ -197,7 +210,7 @@ def main():
         'do_reference_data': False,
         'do_zscore': False,
         'thresh_type': 'outliers_per_channel',
-        'thresh': [None, 5.0],
+        'thresh': [None, 3.0],
         'time_window': 0.500,
         'time_window_step': 0.100,
         'mask': 0,
@@ -261,7 +274,7 @@ def main():
         'remove_bc': True,
     }, algorithm_name='HugeAmplitudeAbsolute')
 
-    artcfg.add_algorithm_group('artifacts_amplitude', max_loops=5, min_rejection=0.05, define_bcbt=True)
+    artcfg.add_algorithm_group('artifacts_amplitude', max_loops=5, min_rejection=min_rejection_thresh_2_0_IQ, define_bcbt=True)
     artcfg.add_algorithm('artifacts_amplitude', 'Amplitude', {
         'bad_data': None,
         'do_reference_data': False,
@@ -274,7 +287,7 @@ def main():
         'remove_bc': True,
     }, algorithm_name='ArtifactsAmplitude')
 
-    artcfg.add_algorithm_group('artifacts_maxchange500', max_loops=5, min_rejection=0.05, define_bcbt=True)
+    artcfg.add_algorithm_group('artifacts_maxchange500', max_loops=5, min_rejection=min_rejection_thresh_2_0_IQ, define_bcbt=True)
     artcfg.add_algorithm('artifacts_maxchange500', 'MaxChange', {
         'bad_data': None,
         'do_reference_data': False,
@@ -289,7 +302,7 @@ def main():
         'remove_bc': True,
     }, algorithm_name='MaxChange500ms')
 
-    artcfg.add_algorithm_group('artifacts_maxchange100', max_loops=5, min_rejection=0.05, define_bcbt=True)
+    artcfg.add_algorithm_group('artifacts_maxchange100', max_loops=5, min_rejection=min_rejection_thresh_2_0_IQ, define_bcbt=True)
     artcfg.add_algorithm('artifacts_maxchange100', 'MaxChange', {
         'bad_data': None,
         'do_reference_data': False,
@@ -304,7 +317,7 @@ def main():
         'remove_bc': True,
     }, algorithm_name='MaxChange100ms')
 
-    # artcfg.add_algorithm_group('artifacts_runningaverage', max_loops=3, min_rejection=0.05, define_bcbt=True)
+    # artcfg.add_algorithm_group('artifacts_runningaverage', max_loops=3, min_rejection=min_rejection_thresh_2_0_IQ, define_bcbt=True)
     # artcfg.add_algorithm('artifacts_runningaverage', 'RunningAverage', {
     #     'bad_data': None,
     #     'do_reference_data': False,
@@ -330,7 +343,7 @@ def main():
     #     'remove_bc': True,
     # }, algorithm_name='CrossElectrodesOutlier')
 
-    artcfg.add_algorithm_group('artifacts_amplitude_avgref', max_loops=5, min_rejection=0.05, define_bcbt=True)
+    artcfg.add_algorithm_group('artifacts_amplitude_avgref', max_loops=5, min_rejection=min_rejection_thresh_2_0_IQ, define_bcbt=True)
     artcfg.add_algorithm('artifacts_amplitude_avgref', 'Amplitude', {
         'bad_data': 'replace by nan',
         'do_reference_data': True,
@@ -343,7 +356,7 @@ def main():
         'remove_bc': True,
     }, algorithm_name='ArtifactsAmplitudeAvgRef')
 
-    artcfg.add_algorithm_group('artifacts_maxchange500_avgref', max_loops=5, min_rejection=0.05, define_bcbt=True)
+    artcfg.add_algorithm_group('artifacts_maxchange500_avgref', max_loops=5, min_rejection=min_rejection_thresh_2_0_IQ, define_bcbt=True)
     artcfg.add_algorithm('artifacts_maxchange500_avgref', 'MaxChange', {
         'bad_data': 'replace by nan',
         'do_reference_data': True,
@@ -358,7 +371,7 @@ def main():
         'remove_bc': True,
     }, algorithm_name='MaxChange500msAvgRef')
 
-    artcfg.add_algorithm_group('artifacts_maxchange100_avgref', max_loops=5, min_rejection=0.05, define_bcbt=True)
+    artcfg.add_algorithm_group('artifacts_maxchange100_avgref', max_loops=5, min_rejection=min_rejection_thresh_2_0_IQ, define_bcbt=True)
     artcfg.add_algorithm('artifacts_maxchange100_avgref', 'MaxChange', {
         'bad_data': 'replace by nan',
         'do_reference_data': True,
@@ -373,7 +386,7 @@ def main():
         'remove_bc': True,
     }, algorithm_name='MaxChange100msAvgRef')
 
-    # artcfg.add_algorithm_group('artifacts_runningaverage_avgref', max_loops=3, min_rejection=0.05, define_bcbt=True)
+    # artcfg.add_algorithm_group('artifacts_runningaverage_avgref', max_loops=3, min_rejection=min_rejection_thresh_2_0_IQ, define_bcbt=True)
     # artcfg.add_algorithm('artifacts_runningaverage_avgref', 'RunningAverage', {
     #     'bad_data': 'replace by nan',
     #     'do_reference_data': True,

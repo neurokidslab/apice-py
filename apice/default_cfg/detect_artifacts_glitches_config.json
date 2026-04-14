@@ -40,8 +40,8 @@
                     "do_zscore": false,
                     "thresh_type": "outliers_per_channel",
                     "thresh": [
-                        -5,
-                        5
+                        -4,
+                        4
                     ],
                     "mask": 0,
                     "remove_bct": true,
@@ -60,7 +60,7 @@
                     "thresh_type": "outliers_per_channel",
                     "thresh": [
                         null,
-                        5.0
+                        3.0
                     ],
                     "time_window": 0.5,
                     "time_window_step": 0.1,

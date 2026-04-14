@@ -45,6 +45,7 @@ git checkout feature/major-update
 
 ```bash
 python -m venv .venv
+source .venv/bin/activate
 ```
 
 ### 3. Install APICE in editable mode
@@ -67,7 +68,7 @@ Note: Python >= 3.12 is required.
 ---
 ## 📂 Sample Data
 
-For sample input raw data, use the [sample files](https://github.com/neurokidslab/eeg_preprocessing/tree/main/examples/example_original/DATA/set).
+For sample input raw data, use the data in `test_data/raw`
 
 ---
 ## Project Structure
@@ -87,7 +88,10 @@ apice-py/
 │   ├── electrode_positions.py      # Electrode position helpers
 │   ├── utils.py                    # Utility functions and config loading
 │   └── default_cfg/                # Default JSON configurations bundled with the package
+├── test_data/                      # Example recording for testing
 ├── electrode_layout/               # Example montage files (.sfp)
+├── apice_tutorial.ipynb            # Tutorial notebook
+├── script_create_custom_configuration.py
 ├── script_pipeline_preprocessing.py
 ├── script_pipeline_segmentation.py
 ├── pyproject.toml                  # Build system and package metadata
@@ -120,6 +124,8 @@ python script_pipeline_segmentation.py
 This script calls `run_segmentation(...)` from `apice.pipeline` and can save epochs, evokeds, report, summary, and config files.
 
 ### 3. Use APICE from your own Python code
+
+Check the example notebook `apice_tutorial.ipynb`
 
 ```python
 from apice.pipeline import run_preprocessing, run_segmentation

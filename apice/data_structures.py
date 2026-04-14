@@ -151,17 +151,15 @@ class RawAPICE(mne.io.RawArray):
         n_epochs = 1  # For Raw data, we consider it as one continuous segment
         return n_channels, n_samples, n_epochs
 
-    def export(self, file_name, output_dir, data_suffix='-preproc'):
+    def export(self, full_path, overwrite=False):
         """Export raw data to FIF after writing artifact annotations.
 
         Parameters
         ----------
-        file_name : str
-            Base filename without extension.
-        output_dir : str | pathlib.Path
-            Output directory.
-        data_suffix : str, default='-preproc'
-            Suffix appended before ``.fif``.
+        full_path : str | pathlib.Path
+            Full path to the output file, including filename and extension.
+        overwrite : bool, default=True
+            If True, overwrite existing files.
 
         Returns
         -------
@@ -170,8 +168,8 @@ class RawAPICE(mne.io.RawArray):
         # rejection matrix to annotations
         self.annotate_bads(channels=True, times=True, data=True, corrected=True)
         # save preprocessed raw
-        full_path = Path(output_dir) / (file_name + data_suffix + '.fif')
-        self.save(full_path, overwrite=True)
+        full_path = Path(full_path)
+        self.save(full_path, overwrite=overwrite)
 
     def bc_to_bads(self):
         """Copy bad-channel flags from artifact masks into ``info['bads']``.
@@ -1470,22 +1468,25 @@ class EpochsAPICE(mne.EpochsArray):
         
         
 
-    def export(self, file_name, output_dir, data_suffix='-epo'):
+    def export(self, full_path, overwrite=False):
         """Export epochs to FIF and artifact annotations to CSV.
 
         Parameters
         ----------
-        file_name : str
-            Base filename without extension.
-        output_dir : str | pathlib.Path
-            Output directory.
-        data_suffix : str, default='-epo'
-            Suffix appended before output filenames.
+        full_path : str | pathlib.Path
+            Full path to the output file, including filename.
 
         Returns
         -------
         None
         """
+        # the extension must be .fif or no extension (in which case .fif will be added)
+        if not str(full_path).endswith('.fif'):
+            full_path = str(full_path) + '.fif'
+        
+        # if the extension is not .fif, raise an error        
+        if not str(full_path).endswith('.fif'):
+            raise ValueError('The output file must have a .fif extension or no extension.')
 
         # get the artifacts in a dataframe
         artifacts_df = self.rejection_matrix_to_data_frame()
@@ -1493,14 +1494,19 @@ class EpochsAPICE(mne.EpochsArray):
                 
         # Save the epochs and the artifacts information in a csv file in the output directory
         print('\nExporting epochs...')
-        output_dir = Path(output_dir)
-        output_dir.mkdir(parents=True, exist_ok=True)
+        full_path = Path(full_path)
+        parent_dir = full_path.parent
+        file_name = full_path.stem
+        parent_dir.mkdir(parents=True, exist_ok=True)
         
-        epochs_fullpath = output_dir / (file_name + data_suffix + '.fif')
-        self.save(epochs_fullpath, overwrite=True)
+        epochs_fullpath = parent_dir / (file_name + '.fif')
+        self.save(epochs_fullpath, overwrite=overwrite)
         print(f"Epochs saved at {epochs_fullpath}.")
         
-        art_fullpath = output_dir / (file_name + data_suffix + '-artifacts.csv')
+        # check if the artifacts .cs file already exists and if overwrite is False, raise an error
+        art_fullpath = parent_dir / (file_name + '-artifacts.csv')
+        if art_fullpath.exists() and not overwrite:
+            raise FileExistsError(f"The artifact file {art_fullpath} already exists. Set overwrite=True to overwrite it.")
         artifacts_df.to_csv(art_fullpath, index=False)
         print(f"\nEpochs artifacts information saved at {art_fullpath}.")
         

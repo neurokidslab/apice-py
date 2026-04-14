@@ -17,10 +17,7 @@ venv/
 tests/
 *test*.ipynb
 *test*.py
-
 random/
-
-test_data/
 
 # IDE specific files
 .vscode

@@ -1,5 +1,19 @@
-import json
+"""
+This script creates custom configuration files for different steps of the artifacts rejection pipeline.
+The configuration files are saved in the specified output directory in JSON format.
+You can modify the parameters in the script to create configurations that suit your specific needs.
+The script creates configurations for:
+- Detecting bad epochs
+- Defining bad channels and bad times
+- Correcting artifacts using PCA and spline methods
+- Detecting bad channels based on basic and power features
+- Detecting huge artifacts based on amplitude and max change    
+- Detecting glitches based on max change
+- Detecting artifacts based on amplitude and max change with and without average reference
+You can comment out or modify the sections of the script to create only the configurations you need.
+"""
 
+import json
 from apice.artifacts_rejection import ArtifactsConfiguration, concatenate_configurations
 from pathlib import Path
 

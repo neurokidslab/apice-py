@@ -49,8 +49,8 @@
     "bad_channels_power": {
         "position": 2,
         "min_loops": 0,
-        "max_loops": 3,
-        "min_rejection": 0.05,
+        "max_loops": 5,
+        "min_rejection": 0.089,
         "define_bcbt": true,
         "algorithms": {
             "PowerHighFreq": {

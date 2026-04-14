@@ -44,10 +44,10 @@ def main():
     H_TRANS_BANDWIDTH = 10
 
     # Time window for epoching the data around the events of interest (e.g., from -2 to 2 seconds around the event).
-    EVENT_TIME_WINDOW = (-2.0, 2.2)
+    EVENT_TIME_WINDOW = (-0.2, 2.0)
 
     # Dictionary of keyword arguments to pass to the function mne.events_from_annotations that extracts events from annotations for segmentation.
-    KWARGS_EVENTS_FROM_ANNOTATIONS_FOR_SEGMENTATION = dict(regexp='shape*', verbose='WARNING')
+    KWARGS_EVENTS_FROM_ANNOTATIONS_FOR_SEGMENTATION = dict(regexp='animal*', verbose='WARNING')
 
     # Dictionary of keyword arguments to pass to the function mne.events_from_annotations that extracts events from annotations for metadata creation.
     # Set it to do not create metadata from the annotations for the epochs
@@ -55,10 +55,10 @@ def main():
     # Dictionary of keyword arguments setting the parameters for creating metadata from the events.
     # - tmin and tmax indicate the time window around the events to consider for creating the metadata. If not set, the entire epoch will be considered.
     # - columns_events_to_keep indicate the columns of the events to keep in the metadata. If not set, all columns will be kept.
-    KWARGS_MAKE_METADATA = dict(tmin=-2.0, tmax=2.2, columns_events_to_keep=['event_name', 'Tini', 'Sound', 'eyeO1', 'eyeC', 'eyeO2', 'animal', 'shape','eyeOend', 'katt','kesc','krsm'])
+    KWARGS_MAKE_METADATA = dict(tmin=-0.2, tmax=2.0, columns_events_to_keep=['event_name', 'Tini', 'Sound', 'eyeO1', 'eyeC', 'eyeO2', 'animal', 'shape','eyeOend', 'katt','kesc','krsm'])
     
     # Baseline correction parameters for the epochs. Set to None to not apply baseline correction.
-    BASELINE = None
+    BASELINE = (None, 0)
 
     # Parameters for setting the reference of the data. 
     # Set to None to not set the reference. 
@@ -69,7 +69,7 @@ def main():
     # If None, only the epochs will be saved.
     # If "all", evoked responses will be computed for all event types in the data and saved in a single file.
     # If a list of strings with event types, evoked responses will be computed for each event type in the list and saved in separate files. 
-    EVOKED_BY = ["shape"]
+    EVOKED_BY = ["animal"]
 
     # Configuration parameters for specific segmentation steps (e.g., defining BCBT epochs, spline interpolation, etc.). Set to None to apply the default configuration.
     CFG_DEFINE_BCBT_EPOCHS = None
