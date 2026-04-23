@@ -1053,7 +1053,11 @@ def preprocess_apice_default(raw,
     # Save log if True
     if save_log: logger.redirect_stdout_to_file(restore=True)
 
-    # LINE NOISE FILTERING
+    # FILTER -----------------------------------------------------------------------------------------------
+    # High pass filter to remove the slow drifts
+    Filter(raw, l_freq=l_freq, h_freq=None, l_trans_bandwidth=l_trans_bandwidth, h_trans_bandwidth=h_trans_bandwidth, n_jobs=n_jobs)    
+
+    # Optional line noise filter
     if line_noise_filt: 
         zap_worker = ZapLine(raw, fline=50, chunk_duration=30, n_jobs=n_jobs)
         raw, zap_fig = zap_worker.apply(raw)
@@ -1061,9 +1065,8 @@ def preprocess_apice_default(raw,
             report.add_figure(zap_fig, "ZapLine Spectral Power", section="Raw Data", replace=True)
             plt.close(zap_fig)
 
-    # FILTER -----------------------------------------------------------------------------------------------
-    Filter(raw, l_freq=l_freq, h_freq=h_freq, l_trans_bandwidth=l_trans_bandwidth, h_trans_bandwidth=h_trans_bandwidth, n_jobs=n_jobs)
-
+    # Low pass filter
+    Filter(raw, l_freq=None, h_freq=h_freq, l_trans_bandwidth=l_trans_bandwidth, h_trans_bandwidth=h_trans_bandwidth, n_jobs=n_jobs)
 
     # ARTIFACT DETECTION AND CORRECTION -----------------------------------------------------------------------------
 
