@@ -1,0 +1,7 @@
+{
+    "bad_data": 0.3,
+    "bad_time": 0,
+    "bad_channel": 0.3,
+    "lim_dist": 2,
+    "lim_gfp": 2
+}

@@ -1,0 +1,244 @@
+{
+    "huge_amplitude_abs": {
+        "position": 1,
+        "min_loops": 0,
+        "max_loops": 1,
+        "min_rejection": 0,
+        "define_bcbt": true,
+        "algorithms": {
+            "HugeAmplitudeAbsolute": {
+                "position": 1,
+                "class_name": "Amplitude",
+                "parameters": {
+                    "bad_data": null,
+                    "do_reference_data": false,
+                    "do_zscore": false,
+                    "thresh_type": "absolute",
+                    "thresh": 0.001,
+                    "mask": 0,
+                    "remove_bct": true,
+                    "remove_bt": true,
+                    "remove_bc": true
+                },
+                "post_detection": false
+            }
+        }
+    },
+    "artifacts_amplitude": {
+        "position": 2,
+        "min_loops": 0,
+        "max_loops": 5,
+        "min_rejection": 0.089,
+        "define_bcbt": true,
+        "algorithms": {
+            "ArtifactsAmplitude": {
+                "position": 1,
+                "class_name": "Amplitude",
+                "parameters": {
+                    "bad_data": null,
+                    "do_reference_data": false,
+                    "do_zscore": false,
+                    "thresh_type": "outliers_per_channel",
+                    "thresh": [
+                        -2,
+                        2
+                    ],
+                    "mask": 0,
+                    "remove_bct": true,
+                    "remove_bt": true,
+                    "remove_bc": true
+                },
+                "post_detection": false
+            }
+        }
+    },
+    "artifacts_maxchange500": {
+        "position": 3,
+        "min_loops": 0,
+        "max_loops": 5,
+        "min_rejection": 0.089,
+        "define_bcbt": true,
+        "algorithms": {
+            "MaxChange500ms": {
+                "position": 1,
+                "class_name": "MaxChange",
+                "parameters": {
+                    "bad_data": null,
+                    "do_reference_data": false,
+                    "do_zscore": false,
+                    "thresh_type": "outliers_per_channel",
+                    "thresh": [
+                        null,
+                        2.0
+                    ],
+                    "time_window": 0.5,
+                    "time_window_step": 0.1,
+                    "mask": 0,
+                    "remove_bct": true,
+                    "remove_bt": true,
+                    "remove_bc": true
+                },
+                "post_detection": false
+            }
+        }
+    },
+    "artifacts_maxchange100": {
+        "position": 4,
+        "min_loops": 0,
+        "max_loops": 5,
+        "min_rejection": 0.089,
+        "define_bcbt": true,
+        "algorithms": {
+            "MaxChange100ms": {
+                "position": 1,
+                "class_name": "MaxChange",
+                "parameters": {
+                    "bad_data": null,
+                    "do_reference_data": false,
+                    "do_zscore": false,
+                    "thresh_type": "outliers_per_channel",
+                    "thresh": [
+                        null,
+                        2.0
+                    ],
+                    "time_window": 0.1,
+                    "time_window_step": 0.02,
+                    "mask": 0,
+                    "remove_bct": true,
+                    "remove_bt": true,
+                    "remove_bc": true
+                },
+                "post_detection": false
+            }
+        }
+    },
+    "artifacts_amplitude_avgref": {
+        "position": 5,
+        "min_loops": 0,
+        "max_loops": 5,
+        "min_rejection": 0.089,
+        "define_bcbt": true,
+        "algorithms": {
+            "ArtifactsAmplitudeAvgRef": {
+                "position": 1,
+                "class_name": "Amplitude",
+                "parameters": {
+                    "bad_data": "replace by nan",
+                    "do_reference_data": true,
+                    "do_zscore": false,
+                    "thresh_type": "outliers_all",
+                    "thresh": [
+                        -2,
+                        2
+                    ],
+                    "mask": 0,
+                    "remove_bct": true,
+                    "remove_bt": true,
+                    "remove_bc": true
+                },
+                "post_detection": false
+            }
+        }
+    },
+    "artifacts_maxchange500_avgref": {
+        "position": 6,
+        "min_loops": 0,
+        "max_loops": 5,
+        "min_rejection": 0.089,
+        "define_bcbt": true,
+        "algorithms": {
+            "MaxChange500msAvgRef": {
+                "position": 1,
+                "class_name": "MaxChange",
+                "parameters": {
+                    "bad_data": "replace by nan",
+                    "do_reference_data": true,
+                    "do_zscore": false,
+                    "thresh_type": "outliers_all",
+                    "thresh": [
+                        null,
+                        2.0
+                    ],
+                    "time_window": 0.5,
+                    "time_window_step": 0.1,
+                    "mask": 0,
+                    "remove_bct": true,
+                    "remove_bt": true,
+                    "remove_bc": true
+                },
+                "post_detection": false
+            }
+        }
+    },
+    "artifacts_maxchange100_avgref": {
+        "position": 7,
+        "min_loops": 0,
+        "max_loops": 5,
+        "min_rejection": 0.089,
+        "define_bcbt": true,
+        "algorithms": {
+            "MaxChange100msAvgRef": {
+                "position": 1,
+                "class_name": "MaxChange",
+                "parameters": {
+                    "bad_data": "replace by nan",
+                    "do_reference_data": true,
+                    "do_zscore": false,
+                    "thresh_type": "outliers_all",
+                    "thresh": [
+                        null,
+                        2.0
+                    ],
+                    "time_window": 0.1,
+                    "time_window_step": 0.02,
+                    "mask": 0,
+                    "remove_bct": true,
+                    "remove_bt": true,
+                    "remove_bc": true
+                },
+                "post_detection": false
+            }
+        }
+    },
+    "artifacts_modify": {
+        "position": 8,
+        "min_loops": 0,
+        "max_loops": 1,
+        "min_rejection": 0,
+        "define_bcbt": true,
+        "algorithms": {
+            "VeryShortBadSegments": {
+                "position": 1,
+                "class_name": "ShortBadSegments",
+                "parameters": {
+                    "time_limit": 0.02
+                },
+                "post_detection": true
+            },
+            "VeryShortGoodSegments": {
+                "position": 2,
+                "class_name": "ShortGoodSegments",
+                "parameters": {
+                    "time_limit": 0.02
+                },
+                "post_detection": true
+            },
+            "ShortBadSegments": {
+                "position": 3,
+                "class_name": "ShortBadSegments",
+                "parameters": {
+                    "time_limit": 0.05
+                },
+                "post_detection": true
+            },
+            "ShortGoodSegments": {
+                "position": 4,
+                "class_name": "ShortGoodSegments",
+                "parameters": {
+                    "time_limit": 0.5
+                },
+                "post_detection": true
+            }
+        }
+    }
+}

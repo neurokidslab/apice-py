@@ -1,3 +1,9 @@
+"""Electrode and head-shape geometry helpers.
+
+This module provides sphere-fitting utilities derived from MNE internals and
+used by APICE interpolation and spatial processing routines.
+"""
+
 import glob
 import json
 import os
@@ -65,26 +71,29 @@ from mne.utils import (
 from mne.viz.misc import plot_bem
 
 def fit_sphere_to_headshape(info, dig_kinds="auto", units="m", verbose=None):
-    """Fit a sphere to the headshape points to determine head center.
+    """Fit a sphere to digitized head-shape points.
 
     Parameters
     ----------
-    %(info_not_none)s
-    %(dig_kinds)s
+    info : mne.Info
+        Measurement info containing digitization points in ``info['dig']``.
+    dig_kinds : str | tuple, default='auto'
+        Digitization point kinds to include in the fit.
     units : str
         Can be ``"m"`` (default) or ``"mm"``.
 
         .. versionadded:: 0.12
-    %(verbose)s
+    verbose : bool | str | int | None
+        MNE verbosity control.
 
     Returns
     -------
     radius : float
-        Sphere radius.
-    origin_head: ndarray, shape (3,)
-        Head center in head coordinates.
-    origin_device: ndarray, shape (3,)
-        Head center in device coordinates.
+        Fitted sphere radius in the requested units.
+    origin_head : ndarray, shape (3,)
+        Sphere origin in head coordinates.
+    origin_device : ndarray, shape (3,)
+        Sphere origin in device/MEG coordinates.
 
     Notes
     -----
@@ -101,22 +110,25 @@ def fit_sphere_to_headshape(info, dig_kinds="auto", units="m", verbose=None):
     return radius, origin_head, origin_device
 
 def get_fitting_dig(info, dig_kinds="auto", exclude_frontal=True, verbose=None):
-    """Get digitization points suitable for sphere fitting.
+    """Return digitization points suitable for sphere fitting.
 
     Parameters
     ----------
-    %(info_not_none)s
-    %(dig_kinds)s
-    %(exclude_frontal)s
-        Default is True.
+    info : mne.Info
+        Measurement info containing digitization points.
+    dig_kinds : str | tuple, default='auto'
+        Point types to include.
+    exclude_frontal : bool, default=True
+        If True, remove low frontal points likely belonging to the face/nose.
 
         .. versionadded:: 0.19
-    %(verbose)s
+    verbose : bool | str | int | None
+        MNE verbosity control.
 
     Returns
     -------
-    dig : array, shape (n_pts, 3)
-        The digitization points (in head coordinates) to use for fitting.
+    dig : ndarray, shape (n_points, 3)
+        Selected digitization points in head coordinates.
 
     Notes
     -----
@@ -179,7 +191,26 @@ def get_fitting_dig(info, dig_kinds="auto", exclude_frontal=True, verbose=None):
     return hsp
 
 def _fit_sphere_to_headshape(info, dig_kinds, verbose=None):
-    """Fit a sphere to the given head shape."""
+    """Internal helper that fits a sphere and computes coordinate transforms.
+
+    Parameters
+    ----------
+    info : mne.Info
+        Measurement info with digitization points and device-head transform.
+    dig_kinds : str | tuple
+        Digitization point kinds to include in the fit.
+    verbose : bool | str | int | None
+        MNE verbosity control.
+
+    Returns
+    -------
+    radius : float
+        Fitted sphere radius in meters.
+    origin_head : ndarray, shape (3,)
+        Sphere origin in head coordinates.
+    origin_device : ndarray, shape (3,)
+        Sphere origin transformed into device coordinates.
+    """
     hsp = get_fitting_dig(info, dig_kinds)
     radius, origin_head = _fit_sphere(np.array(hsp), disp=False)
     # compute origin in device coordinates
@@ -210,7 +241,22 @@ def _fit_sphere_to_headshape(info, dig_kinds, verbose=None):
     return radius, origin_head, origin_device
 
 def _fit_sphere(points, disp="auto"):
-    """Fit a sphere to an arbitrary set of points."""
+    """Fit a sphere to 3D points using constrained optimization.
+
+    Parameters
+    ----------
+    points : ndarray, shape (n_points, 3)
+        Coordinates used for sphere fitting.
+    disp : bool | str, default='auto'
+        Optimization display mode for ``scipy.optimize.fmin_cobyla``.
+
+    Returns
+    -------
+    radius : float
+        Fitted sphere radius.
+    origin : ndarray, shape (3,)
+        Fitted sphere origin.
+    """
     if isinstance(disp, str) and disp == "auto":
         disp = True if logger.level <= 20 else False
     # initial guess for center and radius
@@ -243,7 +289,29 @@ def _fit_sphere(points, disp="auto"):
 
 
 def _check_origin(origin, info, coord_frame="head", disp=False):
-    """Check or auto-determine the origin."""
+    """Validate or infer an origin point in a given coordinate frame.
+
+    Parameters
+    ----------
+    origin : array-like | str
+        Explicit 3-element origin or ``'auto'`` to estimate it.
+    info : mne.Info
+        Measurement info used when ``origin='auto'``.
+    coord_frame : {'head', 'meg'}, default='head'
+        Coordinate frame for the returned origin.
+    disp : bool, default=False
+        If True, logs the chosen origin.
+
+    Returns
+    -------
+    origin : ndarray, shape (3,)
+        Validated origin in the requested coordinate frame.
+
+    Raises
+    ------
+    ValueError
+        If ``origin`` is not a valid 3-element coordinate specification.
+    """
     if isinstance(origin, str):
         if origin != "auto":
             raise ValueError(

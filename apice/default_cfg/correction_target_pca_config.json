@@ -1,0 +1,11 @@
+{
+    "max_time": 0.125,
+    "components_to_remove": null,
+    "variance_to_remove": 0.99,
+    "mask_time": 0.05,
+    "all_time": "all",
+    "all_channel": "no_bad_channel",
+    "all_epochs": "all",
+    "splice_method": 1,
+    "save_corrected": true
+}
