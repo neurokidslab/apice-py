@@ -28,7 +28,7 @@ from mne import BaseEpochs
 from apice.data_structures import RawAPICE
 from apice.io import load_rawapice
 from apice.utils import (get_onset_and_duration, get_cfg)
-from apice.filter import Filter
+from apice.filter import Filter, ZapLine
 
 # %% CLASSES DEFINITIONS
 class Summary():
@@ -405,6 +405,7 @@ def run_preprocessing(input_dir,
                       h_freq=40,
                       l_trans_bandwidth=0.1,
                       h_trans_bandwidth=10,
+                      line_noise_filt=True,
                       cfg_bad_channels_detection=None,
                       cfg_glitches_detection=None,
                       cfg_target_pca=None,
@@ -478,6 +479,8 @@ def run_preprocessing(input_dir,
         High-pass transition bandwidth.
     h_trans_bandwidth : float, default=10
         Low-pass transition bandwidth.
+    line_noise_filt : bool, default=True
+        If True, apply the line noise filtering.
     cfg_bad_channels_detection : None | str | pathlib.Path | dict, default=None
         Configuration source for bad-channel detection.
     cfg_glitches_detection : None | str | pathlib.Path | dict, default=None
@@ -579,6 +582,7 @@ def run_preprocessing(input_dir,
                                             h_freq=h_freq,
                                             l_trans_bandwidth=l_trans_bandwidth,
                                             h_trans_bandwidth=h_trans_bandwidth,
+                                            line_noise_filt=line_noise_filt,
                                             cfg_bad_channels_detection=cfg_bad_channels_detection,
                                             cfg_glitches_detection=cfg_glitches_detection,
                                             cfg_target_pca=cfg_target_pca,
@@ -893,6 +897,7 @@ def preprocess_apice_default(raw,
                              h_freq=40,
                              l_trans_bandwidth=0.1,
                              h_trans_bandwidth=10,
+                             line_noise_filt=True,
                              cfg_define_bcbt_raw=None,
                              cfg_bad_channels_detection=None,
                              cfg_glitches_detection=None,
@@ -936,6 +941,8 @@ def preprocess_apice_default(raw,
         High-pass transition bandwidth.
     h_trans_bandwidth : float, default=10
         Low-pass transition bandwidth.
+    line_noise_filt : bool, default=True
+        If True, apply the line noise filtering.
     cfg_define_bcbt_raw : None | str | pathlib.Path | dict, default=None
         Configuration source for deriving BC/BT masks from raw BCT masks.
     cfg_bad_channels_detection : None | str | pathlib.Path | dict, default=None
@@ -1045,6 +1052,14 @@ def preprocess_apice_default(raw,
 
     # Save log if True
     if save_log: logger.redirect_stdout_to_file(restore=True)
+
+    # LINE NOISE FILTERING
+    if line_noise_filt: 
+        zap_worker = ZapLine(raw, fline=50, chunk_duration=30, n_jobs=n_jobs)
+        raw, zap_fig = zap_worker.apply(raw)
+        if create_report:
+            report.add_figure(zap_fig, "ZapLine Spectral Power", section="Raw Data", replace=True)
+            plt.close(zap_fig)
 
     # FILTER -----------------------------------------------------------------------------------------------
     Filter(raw, l_freq=l_freq, h_freq=h_freq, l_trans_bandwidth=l_trans_bandwidth, h_trans_bandwidth=h_trans_bandwidth, n_jobs=n_jobs)
