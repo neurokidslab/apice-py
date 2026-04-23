@@ -6,10 +6,10 @@ def main():
     # ============================================================================================
 
     # Directory for input data
-    INPUT_DIR = r"/volatile/home/nf282108/Documents/PhD/IHU-ICE/data"
+    INPUT_DIR = r"test_data/raw"
 
     # Directory for output data
-    OUTPUT_DIR = r"/volatile/home/nf282108/Documents/PhD/IHU-ICE/data/apice"
+    OUTPUT_DIR = r"test_data/preprocessed"
 
     # BIDS parameters if the input data is organized in BIDS format, otherwise these parameters will be ignored and can be set to None
     INPUT_DIR_BIDS = False
@@ -67,7 +67,7 @@ def main():
     # Montage to set to the data. It can be mne.channels.DigMontage object, a path to a montage file (e.g., .sfp, .elc, .xyz, etc.) or a string corresponding to a standard montage available in MNE (e.g., 'standard_1020', 'GSN-HydroCel-128', etc.).
     # Set to None to not set a montage if the data already has a montage. 
     # Note that if not montage is provided and the data does not have a montage an error will be raised
-    MONTAGE = r"/volatile/home/nf282108/Documents/PhD/apice-py-feature-major-update/electrode_layout/GSN-HydroCel-129.sfp"
+    MONTAGE = None
     
     # Filter to remove the line noise (set to False to avoid)
     LINE_NOISE_FILT = True
