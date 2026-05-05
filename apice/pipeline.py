@@ -700,7 +700,7 @@ def run_segmentation(input_dir,
 
     # Initialize output folders
     output_dir = Path(output_dir)
-    output_dir.mkdir(exist_ok=True)
+    output_dir.mkdir(parents=True, exist_ok=True)
     
     # Get all files to process
     from apice.io import get_files_to_process
