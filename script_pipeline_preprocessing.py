@@ -75,6 +75,9 @@ def main():
     L_TRANS_BANDWIDTH = 0.1
     H_TRANS_BANDWIDTH = 10
 
+    # Frequency for line noise removal (set to None to not apply line noise removal). The harmonics of the line noise frequency will also be removed up to the Nyquist frequency.
+    LINE_NOISE_FREQ = None
+
     # Configuration parameters for specific preprocessing steps (e.g., bad channels detection, artifacts detection, etc.). 
     # Set to None to apply the default configuration.
     CFG_BAD_CHANNELS_DETECTION = None
@@ -125,6 +128,7 @@ def main():
         h_freq=H_FREQ,
         l_trans_bandwidth=L_TRANS_BANDWIDTH,
         h_trans_bandwidth=H_TRANS_BANDWIDTH,
+        line_noise_freq=LINE_NOISE_FREQ,
         n_jobs=N_JOBS,
         cfg_bad_channels_detection=CFG_BAD_CHANNELS_DETECTION,
         cfg_glitches_detection=CFG_GLITCHES_DETECTION,
