@@ -486,7 +486,7 @@ class RawAPICE(mne.io.RawArray):
         # Return the figure instead of the image
         return fig
     
-    def plot_artifact_structure(self, artifact='all',time_step=50, color_scheme='gnuplot'):
+    def plot_artifact_structure(self, artifact='all',time_step=50, color_scheme='turbo'):
         """Plot raw artifact masks.
 
         Parameters
@@ -495,7 +495,7 @@ class RawAPICE(mne.io.RawArray):
             Artifact layer to display.
         time_step : int, default=50
             Tick spacing for x-axis labels.
-        color_scheme : str, default='gnuplot'
+        color_scheme : str, default='turbo'
             Matplotlib colormap.
 
         Returns
@@ -504,20 +504,47 @@ class RawAPICE(mne.io.RawArray):
             Artifact heatmap figure.
         """
         return self.artifacts.plot_artifact_structure(artifact=artifact, time_step=time_step, color_scheme=color_scheme)
-    
-    def run_algorithms(self, cfg_algorithms):
+
+    def plot_bad_channels_bar(self):
+        """Bar plot of bad-data percentage per channel, excluding bad-time samples.
+
+        Returns
+        -------
+        fig : matplotlib.figure.Figure
+            Bar chart figure.
+        """
+        return self.artifacts.plot_bad_channels_bar()
+
+    def plot_bad_times_line(self):
+        """Line plot of bad-channel percentage at each time sample, excluding bad channels.
+
+        Returns
+        -------
+        fig : matplotlib.figure.Figure
+            Line plot figure.
+        """
+        return self.artifacts.plot_bad_times_line()
+
+    def run_algorithms(self, cfg_algorithms, force_cfg=False, l_freq=None, h_freq=None):
         """Run configured detection/rejection algorithms on this raw object.
 
         Parameters
         ----------
         cfg_algorithms : dict
             Algorithm configuration dictionary.
+        force_cfg : bool, default=False
+            If True, bypass safety checks for ``update_artifacts`` flags.
+        l_freq : float | None, default=None
+            Optional high-pass cutoff used before running algorithms.
+        h_freq : float | None, default=None
+            Optional low-pass cutoff used before running algorithms.
+
 
         Returns
         -------
         None
         """
-        run_algorithms(self, cfg_algorithms)
+        run_algorithms(self, cfg_algorithms, force_cfg=force_cfg, l_freq=l_freq, h_freq=h_freq)
 
     def define_bcbt(self, keep_rejected_previous=None, plot_rejection_matrix=False):
         """Recompute ``BC`` and ``BT`` masks from current ``BCT``.
@@ -535,50 +562,62 @@ class RawAPICE(mne.io.RawArray):
         """
         self.artifacts.define_bcbt(keep_rejected_previous=keep_rejected_previous, plot_rejection_matrix=plot_rejection_matrix)   
 
-    def detect_bad_channels(self, cfg=None):
+    def detect_bad_channels(self, cfg=None, l_freq=None, h_freq=None):
         """Detect bad channels using the configured or default pipeline.
 
         Parameters
         ----------
         cfg : None | str | pathlib.Path | dict, default=None
             Custom configuration source. ``None`` loads package defaults.
+        l_freq : float | None, default=None
+            Optional high-pass cutoff used before running algorithms.
+        h_freq : float | None, default=None
+            Optional low-pass cutoff used before running algorithms.
 
         Returns
         -------
         None
         """
         cfg_bad_channels_detection = get_cfg(cfg, 'detect_bad_channels_config.json')
-        self.run_algorithms(cfg_bad_channels_detection)
+        self.run_algorithms(cfg_bad_channels_detection, l_freq=l_freq, h_freq=h_freq)
 
-    def detect_glitches(self, cfg=None):
+    def detect_glitches(self, cfg=None, l_freq=None, h_freq=None):
         """Detect glitches using the configured or default pipeline.
 
         Parameters
         ----------
         cfg : None | str | pathlib.Path | dict, default=None
             Custom configuration source. ``None`` loads package defaults.
+        l_freq : float | None, default=None
+            Optional high-pass cutoff used before running algorithms.
+        h_freq : float | None, default=None
+            Optional low-pass cutoff used before running algorithms.
 
         Returns
         -------
         None
         """
         cfg_glitches_detection = get_cfg(cfg, 'detect_artifacts_glitches_config.json')
-        self.run_algorithms(cfg_glitches_detection)
+        self.run_algorithms(cfg_glitches_detection, l_freq=l_freq, h_freq=h_freq)
         
-    def detect_artifacts(self, cfg=None):
+    def detect_artifacts(self, cfg=None, l_freq=None, h_freq=None):
         """Detect artifacts using the configured or default pipeline.
 
         Parameters
         ----------
         cfg : None | str | pathlib.Path | dict, default=None
             Custom configuration source. ``None`` loads package defaults.
+        l_freq : float | None, default=None
+            Optional high-pass cutoff used before running algorithms.
+        h_freq : float | None, default=None
+            Optional low-pass cutoff used before running algorithms.
 
         Returns
         -------
         None
         """
         cfg_artifacts_detection = get_cfg(cfg, 'detect_artifacts_all_config.json')
-        self.run_algorithms(cfg_artifacts_detection)
+        self.run_algorithms(cfg_artifacts_detection, l_freq=l_freq, h_freq=h_freq)
         
     def correct_target_pca(self, cfg=None):
         """Apply target PCA artifact correction.
@@ -1569,7 +1608,7 @@ class EpochsAPICE(mne.EpochsArray):
         # Return the figure instead of the image
         return fig
     
-    def plot_artifact_structure(self, artifact='all',time_step=50, color_scheme='gnuplot'):
+    def plot_artifact_structure(self, artifact='all',time_step=50, color_scheme='turbo'):
         """Plot epoch artifact masks.
 
         Parameters
@@ -1578,7 +1617,7 @@ class EpochsAPICE(mne.EpochsArray):
             Artifact layer to display.
         time_step : int, default=50
             Tick spacing for x-axis labels.
-        color_scheme : str, default='gnuplot'
+        color_scheme : str, default='turbo'
             Matplotlib colormap.
 
         Returns
@@ -1587,4 +1626,23 @@ class EpochsAPICE(mne.EpochsArray):
             Artifact heatmap figure.
         """
         return self.artifacts.plot_artifact_structure(artifact=artifact, time_step=time_step, color_scheme=color_scheme)
- 
+
+    def plot_bad_channels_bar(self):
+        """Bar plot of bad-data percentage per channel, excluding bad-time samples.
+
+        Returns
+        -------
+        fig : matplotlib.figure.Figure
+            Bar chart figure.
+        """
+        return self.artifacts.plot_bad_channels_bar()
+
+    def plot_bad_times_line(self):
+        """Line plot of bad-channel percentage per sample, concatenated across epochs.
+
+        Returns
+        -------
+        fig : matplotlib.figure.Figure
+            Line plot figure.
+        """
+        return self.artifacts.plot_bad_times_line()

@@ -129,7 +129,7 @@ def define_bcbt(bct, thresh_bad_times, thresh_bad_channels, bc=None, bt=None, bc
 
 
 
-def plot_artifact_structure(times, ch_names, bct, bc=None, bt=None, be=None, artifact='all', time_step=50, color_scheme='gnuplot', figsize=(12, 6)):
+def plot_artifact_structure(times, ch_names, bct, bc=None, bt=None, be=None, artifact='all', time_step=50, color_scheme='turbo', figsize=(12, 6), thresh_bad_channels=None, thresh_bad_times=None):
     """Plot artifact masks over channels and time/epochs.
 
     Parameters
@@ -150,7 +150,7 @@ def plot_artifact_structure(times, ch_names, bct, bc=None, bt=None, be=None, art
         Artifact layer to visualize.
     time_step : int, default=50
         Tick spacing for time axis in seconds.
-    color_scheme : str, default='gnuplot'
+    color_scheme : str, default='turbo'
         Matplotlib colormap name.
     figsize : tuple, default=(12, 6)
         Figure size in inches.
@@ -164,29 +164,30 @@ def plot_artifact_structure(times, ch_names, bct, bc=None, bt=None, be=None, art
     # Import necessary modules
     import numpy as np
     import matplotlib.pyplot as plt
-    
+    from matplotlib.gridspec import GridSpec
+
     # Functions
-    def prepare_cmap(ax, data, artifact, color_scheme='gnuplot'):
+    def prepare_cmap(ax, data, artifact, color_scheme='turbo', cax=None):
         if artifact == 'all':
             # Define tick labels and colormap for all artifact types
             # tick_labels = ['good', 'bad', 'BT', 'BC', 'BE']
             tick_labels = ['Good Data', 'Bad Data', 'Bad Time Point', 'Bad Channel', 'Bad Epoch']
             cmap = plt.get_cmap(color_scheme, len(tick_labels))
             mat = ax.imshow(data, cmap=cmap, vmin=-0.5, vmax=4.5, aspect='auto')
-            cax = plt.colorbar(mat, ticks=np.arange(5))
-            cax.set_ticklabels(tick_labels)
+            cb = plt.colorbar(mat, cax=cax, ticks=np.arange(5))
+            cb.set_ticklabels(tick_labels)
         else:
             # Define tick labels and colormap for all artifact types
             cmap = plt.get_cmap(color_scheme, len(np.unique(data)))
             mat = ax.imshow(data, cmap=cmap, vmin=np.min(data) - 0.5, vmax=np.max(data) + 0.5, aspect='auto')
-            cax = plt.colorbar(mat, ticks=np.asarray(np.unique(data), dtype=int))
+            cb = plt.colorbar(mat, cax=cax, ticks=np.asarray(np.unique(data), dtype=int))
             colorbar_ticks = np.unique(data)
             # labels = ['good', 'bad', 'BT', 'BC', 'BE']
             labels = ['Good Data', 'Bad Data', 'Bad Time Point', 'Bad Channel', 'Bad Epoch']
             tick_labels = []
             for i in colorbar_ticks:
                 tick_labels.append(labels[i])
-            cax.set_ticklabels(tick_labels)
+            cb.set_ticklabels(tick_labels)
 
     def set_ticks(ax, data, t, time_step, sfreq, n_epochs, n_channels, n_samples, ch_names):        
         # Set x-axis ticks and labels
@@ -206,7 +207,7 @@ def plot_artifact_structure(times, ch_names, bct, bc=None, bt=None, be=None, art
         ax.set_yticklabels([ch_names[i] for i in yticks], fontsize=5)  # Use channel names for labels
         
         # Set subplot title, x-axis label, and y-axis label
-        ax.set_title(artifact)
+        # ax.set_title(artifact)
         ax.set_ylabel('Channel #')
 
     # get some information about the data
@@ -267,24 +268,137 @@ def plot_artifact_structure(times, ch_names, bct, bc=None, bt=None, be=None, art
 
     # Convert the artifact matrix to an integer data type for consistent plotting
     M = np.asarray(M, dtype=int)
-    # Create a figure object with the specified figsize
-    fig = plt.figure(figsize=figsize)
-    
-    # Plotting routine for a single epoch
-    if n_epochs == 1:
-        ax = fig.add_subplot(111)
-        data = M[0, :, :]
-        prepare_cmap(ax, data, artifact, color_scheme=color_scheme)
-        set_ticks(ax, data, times, time_step, sfreq, n_epochs, n_channels, n_samples, ch_names)
-    # Plotting routine for multiple epochs
+
+    # --- Compute per-channel bad-data percentages (bar plot, left panel) ---
+    # Normalise bct to 3D (n_epochs, n_channels, n_samples) for indexing
+    bct_3d = np.asarray(bct)
+    if bct_3d.ndim == 2:
+        bct_3d = bct_3d[np.newaxis, :, :]
+
+    if bt is not None:
+        bt_p = np.asarray(bt)
+        if bt_p.ndim == 1:
+            bt_p = bt_p[np.newaxis, np.newaxis, :]
+        elif bt_p.ndim == 2:
+            bt_p = bt_p[:, np.newaxis, :]
+        if bt_p.shape[0] == 1 and n_epochs > 1:
+            bt_p = np.repeat(bt_p, n_epochs, axis=0)
+        good_time_mask = ~bt_p[:, 0, :].astype(bool)  # (n_epochs, n_samples)
     else:
-        N = M[0, :, :]
+        good_time_mask = np.ones((n_epochs, n_samples), dtype=bool)
+
+    n_good_times = int(good_time_mask.sum())
+    pct_channels = np.array([
+        float(bct_3d[:, i, :][good_time_mask].sum()) / n_good_times * 100
+        if n_good_times > 0 else 0.0
+        for i in range(n_channels)
+    ])
+
+    # --- Compute per-sample bad-channel percentages (line plot, bottom panel) ---
+    # Normalise bc to (n_epochs, n_channels, 1) for indexing
+    if bc is not None:
+        bc_p = np.asarray(bc)
+        if bc_p.ndim == 1:
+            bc_p = bc_p[np.newaxis, :, np.newaxis]
+        elif bc_p.ndim == 2:
+            if bc_p.shape[0] == n_channels and bc_p.shape[1] == 1:
+                bc_p = bc_p[np.newaxis, :, :]
+            else:
+                bc_p = bc_p[:, :, np.newaxis]
+        if bc_p.shape[0] == 1 and n_epochs > 1:
+            bc_p = np.repeat(bc_p, n_epochs, axis=0)
+        good_ch_mask = ~bc_p[:, :, 0].astype(bool)  # (n_epochs, n_channels)
+    else:
+        good_ch_mask = np.ones((n_epochs, n_channels), dtype=bool)
+
+    pct_times_list = []
+    for ep in range(n_epochs):
+        good_ch = good_ch_mask[ep, :]
+        n_good_ch = int(good_ch.sum())
+        pct_ep = (
+            bct_3d[ep, good_ch, :].sum(axis=0).astype(float) / n_good_ch * 100
+            if n_good_ch > 0 else np.zeros(n_samples)
+        )
+        pct_times_list.append(pct_ep)
+    pct_times = np.concatenate(pct_times_list)  # (n_epochs * n_samples,)
+
+    # --- Build figure with 3-panel layout ---
+    # Columns: bar | heatmap | colorbar   Rows: main | line
+    fig = plt.figure(figsize=figsize)
+    gs = GridSpec(2, 3,
+                  figure=fig,
+                  width_ratios=[1, 5, 0.15],
+                  height_ratios=[5, 1],
+                  hspace=0.04,
+                  wspace=0.04)
+
+    ax_heatmap = fig.add_subplot(gs[0, 1])
+    ax_bar     = fig.add_subplot(gs[0, 0])
+    ax_cbar    = fig.add_subplot(gs[0, 2])   # dedicated colorbar axis
+    ax_line    = fig.add_subplot(gs[1, 1])
+    ax_corner  = fig.add_subplot(gs[1, 0])
+    ax_corner.axis('off')
+    fig.add_subplot(gs[1, 2]).axis('off')    # empty corner next to colorbar
+
+    # Build concatenated heatmap data
+    if n_epochs == 1:
+        data = M[0, :, :]
+    else:
+        data = M[0, :, :]
         for ep in np.arange(1, n_epochs):
-            N = np.concatenate((N.copy(), M[ep, :, :]), axis=1)
-        ax = fig.add_subplot(111)
-        data = N
-        prepare_cmap(ax, data, artifact, color_scheme=color_scheme)
-        set_ticks(ax, data, times, time_step, sfreq, n_epochs, n_channels, n_samples, ch_names)
+            data = np.concatenate((data, M[ep, :, :]), axis=1)
+
+    prepare_cmap(ax_heatmap, data, artifact, color_scheme=color_scheme, cax=ax_cbar)
+    set_ticks(ax_heatmap, data, times, time_step, sfreq, n_epochs, n_channels, n_samples, ch_names)
+    # Hide heatmap x-tick labels; they are reproduced on the line plot below
+    ax_heatmap.tick_params(axis='x', labelbottom=False)
+    ax_heatmap.set_xlabel('')
+
+    # Derive bar/line color from the same 5-level colormap used by the heatmap.
+    # index 1 → Bad Data (violet in turbo).
+    _cmap5 = plt.get_cmap(color_scheme, 5)
+    _norm5 = plt.Normalize(vmin=-0.5, vmax=4.5)
+    color_bad = _cmap5(_norm5(1))   # Bad Data
+    color_bt  = _cmap5(_norm5(2))   # Bad Time Point (threshold line, bottom panel)
+    color_bc  = _cmap5(_norm5(3))   # Bad Channel (threshold line, left panel)
+
+    # --- Bar plot (left panel) — channels on y, % bad data on x, inverted x ---
+    ax_bar.barh(np.arange(n_channels), pct_channels, color=color_bad, height=0.8)
+    if thresh_bad_channels is not None:
+        t_pct = thresh_bad_channels * 100
+        ax_bar.axvline(t_pct, color=color_bc, linestyle='--', linewidth=1.0,
+                       label=f'{t_pct:.0f}%')
+        ax_bar.legend(fontsize=6, loc='lower right')
+    ax_bar.invert_xaxis()           # 0 % adjacent to heatmap
+    ax_bar.set_xlabel('% bad data', fontsize=8)
+    ax_bar.set_yticks([])
+    ax_bar.set_ylim(ax_heatmap.get_ylim())  # align channel axis with heatmap
+
+    # --- Line plot (bottom panel) — % bad channels over time / epochs ---
+    x_line = np.arange(len(pct_times))
+    ax_line.plot(x_line, pct_times, color=color_bad, linewidth=0.8)
+    ax_line.fill_between(x_line, pct_times, alpha=0.3, color=color_bad)
+    if thresh_bad_times is not None:
+        t_pct = thresh_bad_times * 100
+        ax_line.axhline(t_pct, color=color_bt, linestyle='--', linewidth=1.0,
+                        label=f'{t_pct:.0f}%')
+        ax_line.legend(fontsize=6, loc='upper right')
+    if n_epochs > 1:
+        for ep in range(1, n_epochs):
+            ax_line.axvline(ep * n_samples - 0.5, color='gray', linestyle=':', linewidth=0.5)
+    ax_line.set_ylabel('% bad ch', fontsize=8)
+    ax_line.set_xlim(ax_heatmap.get_xlim())  # align time/epoch axis with heatmap
+    # Reproduce x-axis ticks matching the heatmap
+    if n_epochs > 1:
+        ax_line.set_xticks(np.arange(0, n_epochs * n_samples, n_samples * 5))
+        ax_line.set_xticklabels(np.arange(0, n_epochs, 5), fontsize=7)
+        ax_line.set_xlabel('Epoch #', fontsize=8)
+    else:
+        xtick_pos = np.arange(0, n_samples, int(time_step * sfreq))
+        xtick_pos = xtick_pos[xtick_pos < n_samples]
+        ax_line.set_xticks(xtick_pos)
+        ax_line.set_xticklabels(np.round(times[xtick_pos], 2), fontsize=7)
+        ax_line.set_xlabel('Time (s)', fontsize=8)
 
     return fig
     
@@ -651,7 +765,7 @@ class ArtifactsRaw(Artifacts):
         print(f"Total BAD TIMES __________________________________ {np.sum(self.BT) / self.n_samples * 100:.2f}%")
         print(f"Total BAD CHANNELS _______________________________ {np.sum(self.BC) / self.n_channels * 100:.2f}%")
                   
-    def plot_artifact_structure(self, artifact='all',time_step=50, color_scheme='gnuplot'):
+    def plot_artifact_structure(self, artifact='all',time_step=50, color_scheme='turbo'):
         """Plot current raw artifact masks.
 
         Parameters
@@ -660,7 +774,7 @@ class ArtifactsRaw(Artifacts):
             Artifact layer to display.
         time_step : int, default=50
             Tick spacing for the time axis.
-        color_scheme : str, default='gnuplot'
+        color_scheme : str, default='turbo'
             Matplotlib colormap name.
 
         Returns
@@ -674,9 +788,85 @@ class ArtifactsRaw(Artifacts):
         bct = bct[np.newaxis, :, :]  # Add an epoch dimension for compatibility with the plotting function
         bc = bc[np.newaxis, :, :]  # Add an epoch dimension for compatibility with the plotting function
         bt = bt[np.newaxis, :, :]  # Add an epoch dimension for compatibility with the plotting function
-        return plot_artifact_structure(self.times, self.ch_names, bct, bc=bc, bt=bt, be=None, 
-                       artifact=artifact, time_step=time_step, color_scheme=color_scheme)
-      
+        return plot_artifact_structure(self.times, self.ch_names, bct, bc=bc, bt=bt, be=None,
+                       artifact=artifact, time_step=time_step, color_scheme=color_scheme,
+                       thresh_bad_channels=self.params['thresh_bad_channels'][-1],
+                       thresh_bad_times=self.params['thresh_bad_times'][-1])
+
+    def plot_bad_channels_bar(self):
+        """Bar plot of bad-data percentage per channel, excluding bad-time samples.
+
+        For each channel the percentage is computed as the fraction of samples
+        in ``BCT`` that are True, counted only over samples where ``BT`` is
+        False (i.e. samples not already flagged as bad times).  A horizontal
+        line marks the final ``thresh_bad_channels`` threshold.
+
+        Returns
+        -------
+        fig : matplotlib.figure.Figure
+            Bar chart figure.
+        """
+        import matplotlib.pyplot as plt
+
+        # Good-time mask: BT shape is (1, n_samples)
+        idx_good = self.BT[0, :] == False  # noqa: E712
+        n_good = idx_good.sum()
+
+        pct = np.array([
+            self.BCT[i, idx_good].sum() / n_good * 100 if n_good > 0 else 0.0
+            for i in range(self.n_channels)
+        ])
+
+        fig, ax = plt.subplots(figsize=(max(8, self.n_channels * 0.15), 4))
+        ax.bar(np.arange(self.n_channels), pct, color='steelblue', width=0.8)
+        thresh = self.params['thresh_bad_channels'][-1] * 100
+        ax.axhline(thresh, color='red', linestyle='--', linewidth=1.2,
+                   label=f'Threshold ({thresh:.0f}%)')
+        ax.set_xticks(np.arange(self.n_channels))
+        ax.set_xticklabels(self.ch_names, rotation=90, fontsize=5)
+        ax.set_xlabel('Channel')
+        ax.set_ylabel('Bad data (%)')
+        ax.set_title('Percentage of bad data per channel (excluding bad times)')
+        ax.legend()
+        fig.tight_layout()
+        return fig
+
+    def plot_bad_times_line(self):
+        """Line plot of bad-channel percentage at each time sample, excluding bad channels.
+
+        For each sample the percentage is computed as the fraction of channels
+        in ``BCT`` that are True, counted only over channels where ``BC`` is
+        False (i.e. channels not already flagged as bad channels).  A
+        horizontal line marks the final ``thresh_bad_times`` threshold.
+
+        Returns
+        -------
+        fig : matplotlib.figure.Figure
+            Line plot figure.
+        """
+        import matplotlib.pyplot as plt
+
+        # Good-channel mask: BC shape is (n_channels, 1)
+        good_ch = self.BC[:, 0] == False  # noqa: E712
+        n_good_ch = good_ch.sum()
+
+        if n_good_ch > 0:
+            pct = self.BCT[good_ch, :].sum(axis=0) / n_good_ch * 100
+        else:
+            pct = np.zeros(self.n_samples)
+
+        fig, ax = plt.subplots(figsize=(12, 4))
+        ax.plot(self.times, pct, color='steelblue', linewidth=0.8)
+        ax.fill_between(self.times, pct, alpha=0.3, color='steelblue')
+        thresh = self.params['thresh_bad_times'][-1] * 100
+        ax.axhline(thresh, color='red', linestyle='--', linewidth=1.2,
+                   label=f'Threshold ({thresh:.0f}%)')
+        ax.set_xlabel('Time (s)')
+        ax.set_ylabel('Bad channels (%)')
+        ax.set_title('Percentage of bad channels over time (excluding bad channels)')
+        ax.legend()
+        fig.tight_layout()
+        return fig
 
 
 class ArtifactsEpochs(Artifacts):
@@ -866,7 +1056,7 @@ class ArtifactsEpochs(Artifacts):
             
 
 
-    def plot_artifact_structure(self, artifact='all',time_step=50, color_scheme='gnuplot'):
+    def plot_artifact_structure(self, artifact='all',time_step=50, color_scheme='turbo'):
         """Plot current epoch artifact masks.
 
         Parameters
@@ -875,7 +1065,7 @@ class ArtifactsEpochs(Artifacts):
             Artifact layer to display.
         time_step : int, default=50
             Tick spacing for the x-axis.
-        color_scheme : str, default='gnuplot'
+        color_scheme : str, default='turbo'
             Matplotlib colormap name.
 
         Returns
@@ -884,9 +1074,98 @@ class ArtifactsEpochs(Artifacts):
             Artifact structure figure.
         """
         
-        return plot_artifact_structure(self.times, self.ch_names, self.BCT, bc=self.BC, bt=self.BT, be=self.BE, 
-                       artifact=artifact, time_step=time_step, color_scheme=color_scheme)
+        return plot_artifact_structure(self.times, self.ch_names, self.BCT, bc=self.BC, bt=self.BT, be=self.BE,
+                       artifact=artifact, time_step=time_step, color_scheme=color_scheme,
+                       thresh_bad_channels=self.params['thresh_bad_channels'][-1],
+                       thresh_bad_times=self.params['thresh_bad_times'][-1])
 
+    def plot_bad_channels_bar(self):
+        """Bar plot of bad-data percentage per channel, excluding bad-time samples.
 
+        For each channel the percentage is computed over samples where ``BT``
+        is False across all epochs.  A horizontal line marks the final
+        ``thresh_bad_channels`` threshold.
+
+        Returns
+        -------
+        fig : matplotlib.figure.Figure
+            Bar chart figure.
+        """
+        import matplotlib.pyplot as plt
+
+        # Good-time mask: BT shape is (n_epochs, 1, n_samples) → (n_epochs, n_samples)
+        idx_good = self.BT[:, 0, :] == False  # noqa: E712  shape: (n_epochs, n_samples)
+        n_good = idx_good.sum()
+
+        pct = np.array([
+            self.BCT[:, i, :][idx_good].sum() / n_good * 100 if n_good > 0 else 0.0
+            for i in range(self.n_channels)
+        ])
+
+        fig, ax = plt.subplots(figsize=(max(8, self.n_channels * 0.15), 4))
+        ax.bar(np.arange(self.n_channels), pct, color='steelblue', width=0.8)
+        thresh = self.params['thresh_bad_channels'][-1] * 100
+        ax.axhline(thresh, color='red', linestyle='--', linewidth=1.2,
+                   label=f'Threshold ({thresh:.0f}%)')
+        ax.set_xticks(np.arange(self.n_channels))
+        ax.set_xticklabels(self.ch_names, rotation=90, fontsize=5)
+        ax.set_xlabel('Channel')
+        ax.set_ylabel('Bad data (%)')
+        ax.set_title('Percentage of bad data per channel (excluding bad times)')
+        ax.legend()
+        fig.tight_layout()
+        return fig
+
+    def plot_bad_times_line(self):
+        """Line plot of bad-channel percentage at each sample, concatenated across epochs.
+
+        For each epoch, the per-sample bad-channel percentage is computed
+        excluding channels flagged as bad (``BC == True``) in that epoch.
+        The epoch vectors are concatenated into one continuous signal and
+        vertical dashed lines mark the epoch boundaries.  A horizontal line
+        marks the final ``thresh_bad_times`` threshold.
+
+        Returns
+        -------
+        fig : matplotlib.figure.Figure
+            Line plot figure.
+        """
+        import matplotlib.pyplot as plt
+
+        pct_all = []
+        for ep in range(self.n_epochs):
+            good_ch = self.BC[ep, :, 0] == False  # noqa: E712
+            n_good_ch = good_ch.sum()
+            if n_good_ch > 0:
+                pct_ep = self.BCT[ep, good_ch, :].sum(axis=0) / n_good_ch * 100
+            else:
+                pct_ep = np.zeros(self.n_samples)
+            pct_all.append(pct_ep)
+
+        pct_concat = np.concatenate(pct_all)
+        x = np.arange(len(pct_concat))
+
+        fig, ax = plt.subplots(figsize=(12, 4))
+        ax.plot(x, pct_concat, color='steelblue', linewidth=0.8)
+        ax.fill_between(x, pct_concat, alpha=0.3, color='steelblue')
+
+        # Vertical lines at epoch boundaries
+        for ep in range(1, self.n_epochs):
+            ax.axvline(ep * self.n_samples, color='gray', linestyle=':', linewidth=0.8)
+
+        thresh = self.params['thresh_bad_times'][-1] * 100
+        ax.axhline(thresh, color='red', linestyle='--', linewidth=1.2,
+                   label=f'Threshold ({thresh:.0f}%)')
+
+        # X-axis ticks at epoch centres labelled by epoch number
+        centres = np.arange(self.n_epochs) * self.n_samples + self.n_samples // 2
+        ax.set_xticks(centres)
+        ax.set_xticklabels(np.arange(self.n_epochs))
+        ax.set_xlabel('Epoch #')
+        ax.set_ylabel('Bad channels (%)')
+        ax.set_title('Percentage of bad channels over time (excluding bad channels)')
+        ax.legend()
+        fig.tight_layout()
+        return fig
 
 
