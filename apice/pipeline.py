@@ -625,7 +625,7 @@ def preprocess_initial_steps(raw,
             output_dir_logs = output_dir / "logs"
             output_dir_logs.mkdir(exist_ok=True)
         if save_cfg:
-            output_dir_cfg = output_dir / "cfg"
+            output_dir_cfg = output_dir / "cfgs"
             output_dir_cfg.mkdir(exist_ok=True)
 
     # Initialise the logger owned by this function
