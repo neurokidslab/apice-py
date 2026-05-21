@@ -348,6 +348,9 @@ def clean_ica(raw,
         if save_log:
             output_dir_logs = output_dir / "logs"
             output_dir_logs.mkdir(exist_ok=True)
+        if save_ica:
+            output_dir_ica = output_dir / "ica"
+            output_dir_ica.mkdir(exist_ok=True)
         
     # get the configurations for rejecting data before ICA
     cfg_artifacts_detection = get_cfg(cfg_artifacts_detection, 'detect_for_ica_config.json')
@@ -575,7 +578,7 @@ def clean_ica(raw,
     if save_data:
         raw_clean.save(output_dir / f"{file_name}-raw.fif", overwrite=True)
     if save_ica:
-        ica.save(output_dir / f"{file_name}-decomposition.fif", overwrite=True)
+        ica.save(output_dir_ica / f"{file_name}-decomposition.fif", overwrite=True)
     if _owns_report and save_report:
         report.save(output_dir_reports / f"{file_name}-report.html", overwrite=True, open_browser=False)
     if save_cfg:
