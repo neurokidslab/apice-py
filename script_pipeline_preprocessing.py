@@ -69,12 +69,15 @@ def main():
     # Note that if not montage is provided and the data does not have a montage an error will be raised
     MONTAGE = None
     
-    # Frequency parameters for band-pass filtering (set to None to not apply band-pass filtering)
-    L_FREQ = 0.1
-    H_FREQ = 40
+    # Filtering parameters for the initial preprocessing steps (set to None to not apply band-pass filtering)
+    L_FREQ_INITIAL = 0.10
+    H_FREQ_INITIAL = 40
+    LINE_NOISE_FREQ_INITIAL = None # Frequency for line noise removal (set to None to not apply line noise removal). The harmonics of the line noise frequency will also be removed up to the Nyquist frequency.
     
-    # Frequency for line noise removal (set to None to not apply line noise removal). The harmonics of the line noise frequency will also be removed up to the Nyquist frequency.
-    LINE_NOISE_FREQ = 50
+    # Filtering parameters for the APICE preprocessing steps (set to None to not apply band-pass filtering). L_FREQ_APICE should be set to a value >0 to apply the high-pass filtering in the APICE default pipeline, which is required for filtering after local artifacts correction steps.
+    L_FREQ_APICE = 0.10
+    H_FREQ_APICE = None
+    LINE_NOISE_FREQ_APICE = None
 
     # Filter parameters to apply for artifact detection steps. 
     # A copy of the data will be filtered with these parameters and used only for artifact detection steps (e.g., bad channels detection, artifacts detection, etc.) to improve the detection of artifacts. 
@@ -83,15 +86,24 @@ def main():
     H_FREQ_ARTIFACTS = None
 
     # Parameter for ICA if applied
-    APPLY_ICA = False
-
+    APPLY_ICA = True
     ICA_PARAMETERS = {
-        'n_components': 20,  # Number of ICA components to compute. If float between 0 and 1, select the number of components to explain the specified variance. If int > 1, select the specified number of components. If None, select all components.
-        'method': 'fastica',  # ICA method to use (e.g., 'fastica', 'infomax', 'picard', etc.). See MNE documentation for more details.
+        'cfg_artifacts_detection': None, # Set to None to apply the default configuration for artifact detection in the ICA pipeline. If a dictionary with specific parameters is provided or a path to a configuration file is provided, these parameters will be used for artifact detection in the ICA pipeline.
+        'cfg_bcbt': None, # Set to None to apply the default configuration for bad channels detection based on the BCBT method in the ICA pipeline. If a dictionary with specific parameters is provided or a path to a configuration file is provided, these parameters will be used for bad channels detection based on the BCBT method in the ICA pipeline.
+        'l_freq_ica': 1.0,  # Low-pass frequency for ICA (set to None to not apply low-pass filtering for ICA)
+        'h_freq_ica': None,  # High-pass frequency for ICA
+        'l_freq_artifacts':None,  # Low-pass frequency for artifact detection (set to None to not apply specific low-pass filtering for artifact detection)
+        'h_freq_artifacts':None,  # High-pass frequency for artifact detection (set to None to not apply specific high-pass filtering for artifact detection)
+        'exclude_ica': None, # List of channels to exclude from ICA (e.g., reference channels, etc.). Set to None or an empty list to not exclude any channels from ICA.
+        'n_components': 'auto',  # Number of ICA components to compute. If float between 0 and 1, select the number of components to explain the specified variance. If int > 1, select the specified number of components. If None, select all components. If 'auto', the number of components will be automatically determined based on the number of channels and amount good data available to fit the ICA model (n_samples ≥ 30 x n_channel**2).
+        'method': 'picard',  # ICA method to use (e.g., 'fastica', 'infomax', 'picard', etc.). See MNE documentation for more details.
+        'fit_params': dict(ortho=False, extended=True),  # Additional parameters to pass to the ICA fit method. See MNE documentation for more details.
         'random_state': 42,  # Random state for ICA reproducibility.
+        'label_components_method': 'iclabel',  # Method to use for labeling ICA components (e.g., 'iclabel', 'correlation', etc.). If 'iclabel', the ICLabel algorithm will be used to automatically label components. If 'correlation', the correlation of the ICA components with EOG and ECG channels will be used to label components. 
+        'iclabel_lim_probability':0.9, # Probability threshold for labeling ICA components as artifacts using the ICLabel algorithm. Components with a probability of being an artifact above this threshold will be labeled as artifacts. 
+        'iclabel_labels_to_exclude': ['eye blink', 'muscle artifact', 'heart beat', 'line noise', 'channel noise'], # List of ICLabel labels to consider as artifacts and exclude. The possible labels are: 'eye blink', 'eye movement', 'muscle artifact', 'heart beat', 'line noise', 'channel noise', 'other'. 
     }
 
-    # Configuration parameters for specific preprocessing steps (e.g., bad channels detection, artifacts detection, etc.). 
     # Set to None to apply the default configuration.
     CFG_BAD_CHANNELS_DETECTION = None
     CFG_GLITCHES_DETECTION = None
@@ -133,22 +145,27 @@ def main():
         resample_freq=RESAMPLE_FREQ,
         stim_channels_to_annotations=STIM_CHANNELS_TO_ANNOTATIONS,
         montage=MONTAGE,
-        save_log=SAVE_LOG,
-        save_report=SAVE_REPORT,
-        save_summary=SAVE_SUMMARY,
-        show_figures=SHOW_FIGURES,
-        l_freq=L_FREQ,
-        h_freq=H_FREQ,
+        l_freq_initial=L_FREQ_INITIAL,
+        h_freq_initial=H_FREQ_INITIAL,
+        line_noise_freq_initial=LINE_NOISE_FREQ_INITIAL,
+        l_freq_apice=L_FREQ_APICE,
+        h_freq_apice=H_FREQ_APICE,
+        line_noise_freq_apice=LINE_NOISE_FREQ_APICE,
         l_freq_artifacts=L_FREQ_ARTIFACTS,
         h_freq_artifacts=H_FREQ_ARTIFACTS,
-        line_noise_freq=LINE_NOISE_FREQ,
-        n_jobs=N_JOBS,
+        apply_ica=APPLY_ICA,
+        ica_parameters=ICA_PARAMETERS,
         cfg_bad_channels_detection=CFG_BAD_CHANNELS_DETECTION,
         cfg_glitches_detection=CFG_GLITCHES_DETECTION,
         cfg_target_pca=CFG_TARGET_PCA,
         cfg_artifacts_detection=CFG_ARTIFACTS_DETECTION,
         cfg_spline_segments=CFG_SPLINE_SEGMENTS,
         cfg_spline_channels=CFG_SPLINE_CHANNELS,
+        n_jobs=N_JOBS,
+        save_log=SAVE_LOG,
+        save_report=SAVE_REPORT,
+        save_summary=SAVE_SUMMARY,
+        show_figures=SHOW_FIGURES,
         )
 
 if __name__ == "__main__":

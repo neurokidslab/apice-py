@@ -60,11 +60,14 @@ def run_preprocessing(input_dir,
                       show_figures=False,
                       apply_ica=False,
                       ica_parameters=None,
-                      l_freq=0.10,
-                      h_freq=40,
+                      l_freq_initial=0.10,
+                      h_freq_initial=100,
+                      line_noise_freq_initial=50,
+                      l_freq_apice=0.10,
+                      h_freq_apice=40,
+                      line_noise_freq_apice=None,
                       l_freq_artifacts=None,
                       h_freq_artifacts=None,
-                      line_noise_freq=None,
                       cfg_bad_channels_detection=None,
                       cfg_glitches_detection=None,
                       cfg_target_pca=None,
@@ -130,18 +133,24 @@ def run_preprocessing(input_dir,
         If False, disable interactive Matplotlib rendering while each file is
         processed. This prevents figure windows from popping up during
         multi-file runs while still allowing report figures to be created.
-    l_freq : float, default=0.10
-        High-pass cutoff frequency in Hz.
-    h_freq : float | None, default=40
-        Low-pass cutoff frequency in Hz.
+    l_freq_initial : float, default=0.10
+        High-pass cutoff frequency in Hz apply in the initial steps (before ICA).
+    h_freq_initial : float | None, default=40
+        Low-pass cutoff frequency in Hz apply in the initial steps (before ICA).
+    l_freq_apice : float, default=0.10
+        High-pass cutoff frequency in Hz apply in the APICE default pipeline.
+    h_freq_apice : float | None, default=40
+        Low-pass cutoff frequency in Hz apply in the APICE default pipeline.
     l_freq_artifacts : float | None, default=None
         High-pass cutoff frequency for the copy of the data used in artifact detection steps. 
-        None to use the same filtering as for the rest of preprocessing steps (i.e., l_freq).
+        None to use the same filtering as the data in the current step.
     h_freq_artifacts : float | None, default=None
         Low-pass cutoff frequency for the copy of the data used in artifact detection steps. 
-        None to use the same filtering as for the rest of preprocessing steps (i.e., h_freq).
-    line_noise_freq : float | None, default=None
-        Line noise frequency to be removed.
+        None to use the same filtering as the data in the current step.
+    line_noise_freq_initial : float | None, default=None
+        Line noise frequency to be removed in the initial steps (before ICA).
+    line_noise_freq_apice : float | None, default=None
+        Line noise frequency to be removed in the APICE default pipeline.
     cfg_bad_channels_detection : None | str | pathlib.Path | dict, default=None
         Configuration source for bad-channel detection.
     cfg_glitches_detection : None | str | pathlib.Path | dict, default=None
@@ -211,8 +220,21 @@ def run_preprocessing(input_dir,
                 raw = mne_bids.read_raw_bids(file)
                 file_name = file.basename.replace(bids_extension, '')
 
+            # Create a shared report and logger for all steps of this file
+            if save_report:
+                shared_report = mne.Report(title=file_name)
+            else:
+                shared_report = None
+            if save_log:
+                output_dir_logs = output_dir / "logs"
+                output_dir_logs.mkdir(exist_ok=True)
+                shared_logger = StdOutLogger(output_dir_logs, file_name)
+                shared_logger.redirect_stdout_to_file(restore=True)
+            else:
+                shared_logger = None
+
             # Run initial preprocessing steps
-            raw = preprocess_initial_steps(
+            raw, _ = preprocess_initial_steps(
                                         raw,
                                         drop_electrodes=drop_electrodes,
                                         picks=picks,
@@ -222,7 +244,35 @@ def run_preprocessing(input_dir,
                                         resample_freq=resample_freq,
                                         stim_channels_to_annotations=stim_channels_to_annotations,
                                         montage=montage,
-                                        )           
+                                        l_freq=l_freq_initial,
+                                        h_freq=h_freq_initial,
+                                        line_noise_freq=line_noise_freq_initial,
+                                        n_jobs=n_jobs,
+                                        create_report=save_report,
+                                        save_report=False,
+                                        save_cfg=True,
+                                        save_log=False,
+                                        output_dir=output_dir,
+                                        file_name=file_name,
+                                        report=shared_report,
+                                        logger=shared_logger,
+                                        )
+            
+            # Run APICE ICA correction (remove big artifacted segments and bad channels before ICA fitting)
+            if apply_ica:
+                raw, _, _ = clean_ica(raw, 
+                                      **ica_parameters,
+                                        create_report=True,
+                                        save_data=False,
+                                        save_report=False,
+                                        save_ica=True,
+                                        save_cfg=True,
+                                        save_log=False,
+                                        output_dir=output_dir,
+                                        file_name=file_name,
+                                        report=shared_report,
+                                        logger=shared_logger,
+                                        )
 
             # Run APICE default preprocessing pipeline
             was_interactive = plt.isinteractive()
@@ -238,14 +288,14 @@ def run_preprocessing(input_dir,
                                             file_name=file_name,
                                             output_dir=output_dir,
                                             create_report=save_report,
-                                            save_log=save_log,
+                                            save_log=False,
                                             save_data=True,
-                                            save_report=save_report,
+                                            save_report=False,
                                             save_summary=save_summary,
                                             reference_channels=reference_channels,
-                                            l_freq=l_freq,
-                                            h_freq=h_freq,
-                                            line_noise_freq=line_noise_freq,
+                                            l_freq=l_freq_apice,
+                                            h_freq=h_freq_apice,
+                                            line_noise_freq=line_noise_freq_apice,
                                             l_freq_artifacts=l_freq_artifacts,
                                             h_freq_artifacts=h_freq_artifacts,
                                             cfg_bad_channels_detection=cfg_bad_channels_detection,
@@ -255,16 +305,34 @@ def run_preprocessing(input_dir,
                                             cfg_spline_segments=cfg_spline_segments,
                                             cfg_spline_channels=cfg_spline_channels,
                                             n_jobs=n_jobs,
+                                            report=shared_report,
+                                            logger=shared_logger,
                                             )
+
             finally:
                 plt.close('all')
                 if not show_figures and original_backend.lower() != 'agg':
                     plt.switch_backend(original_backend)
                 if not show_figures and was_interactive:
                     plt.ion()
+
+            # Save the shared report and close the shared logger
+            if save_report and shared_report is not None:
+                output_dir_reports = output_dir / "reports"
+                output_dir_reports.mkdir(exist_ok=True)
+                report_path = output_dir_reports / f"{file_name}-preproc-report.html"
+                print(f"Saving unified report")
+                shared_report.save(fname=report_path, open_browser=False, overwrite=True)
+            if save_log and shared_logger is not None:
+                shared_logger.close()
             
         except Exception as e:
             print(f"Error processing file {file}: {e}")
+            if save_log and 'shared_logger' in dir() and shared_logger is not None:
+                try:
+                    shared_logger.close()
+                except Exception:
+                    pass
             continue
             
 
@@ -442,6 +510,16 @@ def preprocess_initial_steps(raw,
                           h_freq=40,
                           line_noise_freq=None,
                           n_jobs=-1,
+                          create_report=False,
+                          save_report=False,
+                          save_log=False,
+                          save_data=False,
+                          save_cfg=False,
+                          preprocessed_data_suffix='-initial-raw',
+                          output_dir=None,
+                          file_name=None,
+                          report=None,
+                          logger=None,
                          ):
     """Apply structural preprocessing steps before APICE artifact handling.
 
@@ -475,11 +553,47 @@ def preprocess_initial_steps(raw,
         Line noise frequency to be removed.
     n_jobs : int, default=-1
         Number of parallel jobs for compute-intensive steps.
-    
+    create_report : bool, default=False
+        If True, build an in-memory MNE report with raw overview, PSD before
+        and after filtering, and the ZapLine figure (if applicable).
+    save_report : bool, default=False
+        If True and *this function owns the report* (i.e. ``report`` was not
+        injected), save the report to
+        ``output_dir/reports/{file_name}-initial-report.html``.
+    save_log : bool, default=False
+        If True and *this function owns the logger* (i.e. ``logger`` was not
+        injected), redirect ``sys.stdout`` to
+        ``output_dir/logs/{file_name}_log.txt``.
+    save_data : bool, default=False
+        If True, export the filtered raw object to
+        ``output_dir/{file_name}{preprocessed_data_suffix}.fif``.
+    save_cfg : bool, default=False
+        If True, save the effective configuration of this function to
+        ``output_dir/{file_name}_cfg.json``.
+    preprocessed_data_suffix : str, default='-initial-raw'
+        Suffix appended to ``file_name`` when saving the raw file.
+    output_dir : str | pathlib.Path | None, default=None
+        Destination folder.  Required when ``save_report``, ``save_log``, or
+        ``save_data`` is True and the corresponding object is not injected.
+    file_name : str | None, default=None
+        Base name for output files.  Required when ``save_report``,
+        ``save_log``, or ``save_data`` is True and the corresponding object is
+        not injected.
+    report : mne.Report | None, default=None
+        An existing report to add figures to.  When provided the function will
+        add its content but will **not** save the report — saving is the
+        caller's responsibility.
+    logger : StdOutLogger | None, default=None
+        An existing logger whose stdout redirect is already active.  When
+        provided the function will not create, redirect, or close a new logger.
+
     Returns
     -------
     raw : mne.io.BaseRaw
         Updated raw object after structural preprocessing.
+    report : mne.Report | None
+        The report built (or extended) during this call.  ``None`` when both
+        ``create_report`` is False and no ``report`` was injected.
     """
 
     # INITIALIZATION -----------------------------------------------------------------------------------------------
@@ -487,6 +601,44 @@ def preprocess_initial_steps(raw,
     # Check if raw is an instance of mne.io.Raw
     if not isinstance(raw, mne.io.BaseRaw):
         raise TypeError("raw must be an instance of mne.io.Raw")
+
+    # Determine ownership of report and logger
+    _owns_report = (report is None) and create_report
+    _owns_logger = (logger is None) and save_log
+
+    # Validate output_dir / file_name when saving is requested by this function
+    if _owns_report and save_report and (output_dir is None or file_name is None):
+        raise ValueError("output_dir and file_name must be provided when save_report=True")
+    if _owns_logger and (output_dir is None or file_name is None):
+        raise ValueError("output_dir and file_name must be provided when save_log=True")
+    if save_data and (output_dir is None or file_name is None):
+        raise ValueError("output_dir and file_name must be provided when save_data=True")
+
+    # Create output directories if needed
+    if output_dir is not None:
+        output_dir = Path(output_dir)
+        output_dir.mkdir(exist_ok=True)
+        if _owns_report and save_report:
+            output_dir_reports = output_dir / "reports"
+            output_dir_reports.mkdir(exist_ok=True)
+        if _owns_logger:
+            output_dir_logs = output_dir / "logs"
+            output_dir_logs.mkdir(exist_ok=True)
+        if save_cfg:
+            output_dir_cfg = output_dir / "cfg"
+            output_dir_cfg.mkdir(exist_ok=True)
+
+    # Initialise the logger owned by this function
+    if _owns_logger:
+        logger = StdOutLogger(output_dir_logs, file_name)
+
+    # Initialise the report owned by this function
+    if _owns_report:
+        report = mne.Report(title=file_name)
+
+    # Start logging
+    if _owns_logger:
+        logger.redirect_stdout_to_file(restore=True)
 
     # Preprocessing start time
     sim_time_start = time.time()
@@ -544,7 +696,22 @@ def preprocess_initial_steps(raw,
     
 
     # FILTER -----------------------------------------------------------------------------------------------
-    
+
+    # Raw overview and PSD before filtering
+    if report is not None:
+        try:
+            report.add_raw(raw, title="Input Raw Data", psd=True, butterfly=True, replace=True)
+        except Exception as e:
+            print(f"Warning: Could not add raw overview to report: {e}")
+        try:
+            fmax_pre = raw.info['sfreq'] / 2
+            fig_psd_pre = raw.compute_psd(method='welch', fmax=fmax_pre).plot(show=False)
+            report.add_figure(fig_psd_pre, "PSD — Before Filtering",
+                              section="Initial Preprocessing", replace=True)
+            plt.close(fig_psd_pre)
+        except Exception as e:
+            print(f"Warning: Could not add pre-filter PSD to report: {e}")
+
     # High pass filter to remove the slow drifts
     Filter(raw, l_freq=l_freq, h_freq=None, n_jobs=n_jobs)    
 
@@ -552,18 +719,67 @@ def preprocess_initial_steps(raw,
     if line_noise_freq is not None: 
         zap_worker = ZapLine(raw, fline=line_noise_freq, chunk_duration=30, n_jobs=n_jobs)
         raw, zap_fig = zap_worker.apply(raw)
+        if report is not None:
+            try:
+                report.add_figure(zap_fig, "ZapLine Spectral Power",
+                                  section="Initial Preprocessing", replace=True)
+                plt.close(zap_fig)
+            except Exception as e:
+                print(f"Warning: Could not add ZapLine figure to report: {e}")
     
     # Low pass filter
     Filter(raw, l_freq=None, h_freq=h_freq, n_jobs=n_jobs)
+
+    # PSD after filtering
+    if report is not None:
+        try:
+            fmax_post = raw.info['sfreq'] / 2
+            fig_psd_post = raw.compute_psd(method='welch', fmax=fmax_post).plot(show=False)
+            report.add_figure(fig_psd_post, "PSD — After Filtering",
+                              section="Initial Preprocessing", replace=True)
+            plt.close(fig_psd_post)
+        except Exception as e:
+            print(f"Warning: Could not add post-filter PSD to report: {e}")
 
 
     # END TIME ------------------------------------------------------------------------------------------------
     sim_time_end = timedelta(seconds=np.round(time.time() - sim_time_start))
     print(f"\nInitial preprocessing steps completed in: {sim_time_end}, in hh:mm:ss")
     print('=============================================\n')
-        
 
-    return raw
+    # Save raw data
+    if save_data:
+        print("Saving initial preprocessed raw data")
+        full_path = output_dir / (file_name + preprocessed_data_suffix + ".fif")
+        raw.export(full_path, overwrite=True)
+
+    # Save configuration
+    if save_cfg:
+        cfg = {
+            "drop_electrodes": drop_electrodes,
+            "picks": picks,
+            "crop_times": crop_times,
+            "crop_from_beginnning": crop_from_beginnning,
+            "crop_from_end": crop_from_end,
+            "resample_freq": resample_freq,
+            "stim_channels_to_annotations": stim_channels_to_annotations,
+            "montage": montage if not isinstance(montage, mne.channels.DigMontage) else "custom_dig_montage",
+            "head_size": head_size,
+            "l_freq": l_freq,
+            "h_freq": h_freq,
+            "line_noise_freq": line_noise_freq,
+        }
+        with open(output_dir_cfg / f"{file_name}_initial_preprocessing_cfg.json", 'w') as f:
+            json.dump(cfg, f, indent=4)
+
+    # Save report and close logger if owned by this function
+    if _owns_report and save_report:
+        report.save(output_dir_reports / f"{file_name}-initial-report.html",
+                    open_browser=False, overwrite=True)
+    if _owns_logger:
+        logger.close()
+
+    return raw, report
     
 
 def preprocess_apice_default(raw, 
@@ -590,6 +806,8 @@ def preprocess_apice_default(raw,
                              cfg_spline_segments=None,
                              cfg_spline_channels=None,
                              n_jobs=-1,
+                             report=None,
+                             logger=None,
                              ):
     """Run the default APICE artifact-detection and correction pipeline.
 
@@ -643,6 +861,13 @@ def preprocess_apice_default(raw,
         Configuration source for channel-wise spline correction.
     n_jobs : int, default=-1
         Number of parallel jobs for compute-intensive steps.
+    report : mne.Report | None, default=None
+        An existing report to add figures to.  When provided the function will
+        add its content but will **not** save the report — saving is the
+        caller's responsibility.
+    logger : StdOutLogger | None, default=None
+        An existing logger whose stdout redirect is already active.  When
+        provided the function will not create, redirect, or close a new logger.
 
     Returns
     -------
@@ -651,7 +876,8 @@ def preprocess_apice_default(raw,
     summary : SummaryPreprocessing
         Summary object tracking preprocessing metrics.
     report : mne.Report | None
-        Generated report, or None when ``create_report`` is False.
+        Generated report, or None when ``create_report`` is False and no
+        ``report`` was injected.
     """
 
         
@@ -664,13 +890,17 @@ def preprocess_apice_default(raw,
     # Check that raw has a montage
     if raw.get_montage() is None:
         raise ValueError("raw must have a montage. Please set the montage before preprocessing.")
-    
+
+    # Determine ownership of report and logger
+    _owns_report = (report is None) and create_report
+    _owns_logger = (logger is None) and save_log
+
     # Check that output_dir is provided if any of the saving options is True
-    if output_dir is None and (save_log or save_data or save_report or save_summary):
+    if output_dir is None and (save_data or save_summary or (_owns_report and save_report) or _owns_logger):
         raise ValueError("output_dir must be provided if any of the saving options is True")
     
     # Check that file_name is provided if any of the saving options is True, to use as part of the file name for the saved files
-    if file_name is None and (save_log or save_data or save_report or save_summary):
+    if file_name is None and (save_data or save_summary or (_owns_report and save_report) or _owns_logger):
         raise ValueError("file_name must be provided if any of the saving options is True, to use as part of the file name for the saved files")
     
     # Check the filter frequencies
@@ -706,18 +936,19 @@ def preprocess_apice_default(raw,
         if save_summary:
             output_dir_summary = output_dir / "summary"
             output_dir_summary.mkdir(exist_ok=True)
-        if save_report:
+        if _owns_report and save_report:
             output_dir_reports = output_dir / "reports"
             output_dir_reports.mkdir(exist_ok=True)
         if save_cfg:
             output_dir_cfgs = output_dir / "cfgs"
             output_dir_cfgs.mkdir(exist_ok=True)
-        if save_log:
+        if _owns_logger:
             output_dir_logs = output_dir / "logs"
             output_dir_logs.mkdir(exist_ok=True)
     
-    # Initialize object for logging
-    if save_log: logger = StdOutLogger(output_dir_logs, file_name)
+    # Initialize logger owned by this function
+    if _owns_logger:
+        logger = StdOutLogger(output_dir_logs, file_name)
         
     # Preprocessing start time
     sim_time_start = time.time()
@@ -728,14 +959,12 @@ def preprocess_apice_default(raw,
     # Initialize object tracking the summary of artifacts
     summary = SummaryPreprocessing(output_dir_summary, file_name, try_loading=False)
 
-    # Initialize reports
-    if create_report:
+    # Initialize report owned by this function
+    if _owns_report:
         report = mne.Report(title=file_name)
-    else:
-        report = None
 
-    # Save log if True
-    if save_log: logger.redirect_stdout_to_file(restore=True)
+    # Start logging (only when this function owns it)
+    if _owns_logger: logger.redirect_stdout_to_file(restore=True)
 
     # FILTER -----------------------------------------------------------------------------------------------
     
@@ -746,7 +975,7 @@ def preprocess_apice_default(raw,
     if line_noise_freq is not None: 
         zap_worker = ZapLine(raw, fline=line_noise_freq, chunk_duration=30, n_jobs=n_jobs)
         raw, zap_fig = zap_worker.apply(raw)
-        if create_report:
+        if report is not None:
             report.add_figure(zap_fig, "ZapLine Spectral Power", section="Raw Data", replace=True)
             plt.close(zap_fig)
 
@@ -759,7 +988,7 @@ def preprocess_apice_default(raw,
     # Initialize artifacts structure
     raw = RawAPICE(raw, **cfg_define_bcbt_raw)
 
-    if create_report:
+    if report is not None:
         try:
             report.add_raw(raw, 
                             title="Raw Data", 
@@ -817,7 +1046,7 @@ def preprocess_apice_default(raw,
     summary.add_to_summary('artifacts_detection_Artifacts', raw, overwrite=True)
 
     # Create a figure to visualize the artifact structure
-    if create_report:
+    if report is not None:
         try:
             fig = raw.plot_artifact_structure(color_scheme='jet')    
             report.add_figure(fig, "Artifacts Matrix", section="Raw Data", replace=True)
@@ -825,7 +1054,7 @@ def preprocess_apice_default(raw,
             print(f"Warning: Could not add raw artifacts matrix to report: {e}")
 
     # Add topomap of bad electrodes
-    if create_report:
+    if report is not None:
         try:
             fig = raw.plot_percentage_of_bad_data_across_sensors()
             report.add_figure(fig, "Bad data across electrodes", section="Raw Data", replace=True)
@@ -846,7 +1075,7 @@ def preprocess_apice_default(raw,
     raw.deal_with_reference_channels(reference_channels)    
     summary.add_to_summary('artifacts_detection_ArtifactsPostCorrection', raw, overwrite=True)
 
-    if create_report:
+    if report is not None:
         try:
             report.add_raw(raw, 
                             title="Preprocessed Raw Data", 
@@ -875,7 +1104,7 @@ def preprocess_apice_default(raw,
             print(f"Warning: Could not add preprocessed PSD to report: {e}")
     
     # Create a figure to visualize the artifact structure
-    if create_report:
+    if report is not None:
         try:
             fig = raw.plot_artifact_structure(color_scheme='jet')
             report.add_figure(fig, "Artifacts Matrix", section="Preprocessed Raw Data", replace=True)
@@ -883,7 +1112,7 @@ def preprocess_apice_default(raw,
             print(f"Warning: Could not add preprocessed artifacts matrix to report: {e}")
 
     # Add topomap of bad electrodes
-    if create_report:
+    if report is not None:
         try:
             fig = raw.plot_percentage_of_bad_data_across_sensors()
             report.add_figure(fig, "Bad data across electrodes", section="Preprocessed Raw Data", replace=True)
@@ -891,7 +1120,7 @@ def preprocess_apice_default(raw,
             print(f"Warning: Could not add preprocessed bad-data topomap to report: {e}")
 
     # Add a plot showing the amount of rejected data
-    if create_report:
+    if report is not None:
         try:
             fig = plot_summary(summary.summary_df, metrics = ["%_corrected_data", "%_bad_data", "%_bad_channels", "%_bad_times"])
             report.add_figure(fig, "Rejected Data Summary", section="Preprocessed Raw Data", replace=True)
@@ -913,7 +1142,7 @@ def preprocess_apice_default(raw,
         summary.save()
 
     # Save report
-    if create_report and save_report:
+    if _owns_report and save_report:
         output_dir_reports.mkdir(exist_ok=True)
         print("Saving report")
         full_path = output_dir_reports / (file_name + preprocessed_data_suffix + "-report.html")
@@ -939,7 +1168,7 @@ def preprocess_apice_default(raw,
     print(f"\nAPICE default preprocessing pipeline completed in: {sim_time_end}, in hh:mm:ss")
     print('=============================================\n')
     
-    if save_log:
+    if _owns_logger:
         logger.close()
 
     return raw, summary, report
@@ -970,6 +1199,8 @@ def segment_default_pipeline(raw,
                    cfg_spline_channels=None,  
                    cfg_bad_epochs=None,              
                    n_jobs=-1,
+                   report=None,
+                   logger=None,
                    ):
     """Run epoching, interpolation, bad-epoch marking, and ERP computation.
 
@@ -1023,6 +1254,13 @@ def segment_default_pipeline(raw,
         Configuration source for bad-epoch detection.
     n_jobs : int, default=-1
         Number of parallel jobs for compute-intensive steps.
+    report : mne.Report | None, default=None
+        An existing report to add figures to.  When provided the function will
+        add its content but will **not** save the report — saving is the
+        caller's responsibility.
+    logger : StdOutLogger | None, default=None
+        An existing logger whose stdout redirect is already active.  When
+        provided the function will not create, redirect, or close a new logger.
 
     Returns
     -------
@@ -1033,7 +1271,8 @@ def segment_default_pipeline(raw,
     summary : SummaryEpochs
         Summary object tracking segmentation metrics.
     report : mne.Report | None
-        Generated report, or None when ``create_report`` is False.
+        Generated report, or None when ``create_report`` is False and no
+        ``report`` was injected.
     """
 
     # INITIALIZATION -----------------------------------------------------------------------------------------------
@@ -1049,13 +1288,17 @@ def segment_default_pipeline(raw,
     # Check that raw has a montage
     if raw.get_montage() is None:
         raise ValueError("raw must have a montage. Please set the montage before preprocessing.")
-    
+
+    # Determine ownership of report and logger
+    _owns_report = (report is None) and create_report
+    _owns_logger = (logger is None) and save_log
+
     # Check that output_dir is provided if any of the saving options is True
-    if output_dir is None and (save_log or save_epochs or save_evoked or save_report or save_summary):
+    if output_dir is None and (save_epochs or save_evoked or save_summary or (_owns_report and save_report) or _owns_logger):
         raise ValueError("output_dir must be provided if any of the saving options is True")
 
     # Check that file_name is provided if any of the saving options is True, to use as part of the file name for the saved files
-    if file_name is None and (save_log or save_epochs or save_evoked or save_report or save_summary):
+    if file_name is None and (save_epochs or save_evoked or save_summary or (_owns_report and save_report) or _owns_logger):
         raise ValueError("file_name must be provided if any of the saving options is True, to use as part of the file name for the saved files")
 
     # Get the default configurations if not provided or load it if provided as path to a json file
@@ -1074,10 +1317,10 @@ def segment_default_pipeline(raw,
         if save_cfg:
             output_dir_cfgs = output_dir / "cfgs"
             output_dir_cfgs.mkdir(exist_ok=True)
-        if save_report:
+        if _owns_report and save_report:
             output_dir_reports = output_dir / "reports"
             output_dir_reports.mkdir(exist_ok=True)
-        if save_log:
+        if _owns_logger:
             output_dir_logs = output_dir / "logs"
             output_dir_logs.mkdir(exist_ok=True)
         if save_summary:
@@ -1087,18 +1330,16 @@ def segment_default_pipeline(raw,
     # Initialize object tracking the summary of artifacts
     summary = SummaryEpochs(output_dir_summary, file_name, try_loading=False)
 
-    # Initialize object for logging
-    if save_log: 
+    # Initialize logger owned by this function
+    if _owns_logger:
         logger = StdOutLogger(output_dir_logs, file_name)
         
-    # Initialize reports
-    if create_report:
+    # Initialize report owned by this function
+    if _owns_report:
         report = mne.Report(title=file_name)
-    else:
-        report = None
 
-    # Save log if True
-    if save_log: logger.redirect_stdout_to_file(restore=True)
+    # Start logging (only when this function owns it)
+    if _owns_logger: logger.redirect_stdout_to_file(restore=True)
 
     # Segmentation start time
     sim_time_start = time.time()
@@ -1161,14 +1402,14 @@ def segment_default_pipeline(raw,
     # epochs.plot(epoch_colors=epoch_colors)
 
     # Add epochs in report
-    if create_report:
+    if report is not None:
         try:
             report.add_epochs(epochs, "Epochs", psd=True, replace=True)
         except Exception as e:
             print(f"Warning: Could not add epochs to report: {e}")
     
     # Add epochs artifacts matrix
-    if create_report:
+    if report is not None:
         try:
             fig = epochs.plot_artifact_structure(color_scheme='jet')
             report.add_figure(fig, "Artifacts Matrix", section="Epochs", replace=True)
@@ -1176,7 +1417,7 @@ def segment_default_pipeline(raw,
             print(f"Warning: Could not add epochs artifacts matrix to report: {e}")
 
     # Add topomap of bad electrodes
-    if create_report:
+    if report is not None:
         try:
             fig = epochs.plot_percentage_of_bad_data_across_sensors()
             report.add_figure(fig, "Bad data across electrodes", section="Epochs", replace=True)
@@ -1184,7 +1425,7 @@ def segment_default_pipeline(raw,
             print(f"Warning: Could not add epochs bad-data topomap to report: {e}")
 
     # Add a plot showing the amount of rejected data
-    if create_report:
+    if report is not None:
         try:
             fig = plot_summary(summary.summary_df, metrics = ["%_corrected_data", "%_bad_data", "%_bad_channels", "%_bad_times", "%_bad_epochs"])
             report.add_figure(fig, "Rejected Data Summary", section="Epochs", replace=True)
@@ -1192,7 +1433,7 @@ def segment_default_pipeline(raw,
             print(f"Warning: Could not add rejected data summary to report: {e}")
 
     # Add evokeds in the report
-    if create_report:
+    if report is not None:
         if evoked_by is None:
             evokeds_to_add = []
         elif evoked_by == "all":
@@ -1254,7 +1495,7 @@ def segment_default_pipeline(raw,
         summary.save()
 
     # Save report
-    if save_report:
+    if _owns_report and save_report:
         output_dir_reports.mkdir(exist_ok=True)
         print("Saving report")
         full_path = output_dir_reports / (file_name + "-epo.html")
@@ -1276,7 +1517,7 @@ def segment_default_pipeline(raw,
     print(f"\nAPICE default segmentation pipeline completed in: {sim_time_end}, in hh:mm:ss")
     print('=============================================\n')
     
-    if save_log:
+    if _owns_logger:
         logger.close()
 
     return epochs, evokeds, summary, report

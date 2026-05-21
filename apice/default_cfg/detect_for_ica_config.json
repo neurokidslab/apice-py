@@ -35,76 +35,11 @@
                     "mask": 0
                 },
                 "post_detection": false
-            },
-            "ShortGoodSegments_3": {
-                "position": 3,
-                "class_name": "ShortGoodSegments",
-                "parameters": {
-                    "time_limit": 2
-                },
-                "post_detection": true
-            }
-        }
-    },
-    "bad_channels_power": {
-        "position": 2,
-        "min_loops": 0,
-        "max_loops": 5,
-        "min_rejection": 0.089,
-        "define_bcbt": true,
-        "algorithms": {
-            "PowerHighFreq": {
-                "position": 1,
-                "class_name": "Power",
-                "parameters": {
-                    "bad_data": null,
-                    "do_reference_data": false,
-                    "do_zscore": false,
-                    "time_window": 10,
-                    "time_window_step": 5,
-                    "freq_band": [
-                        20,
-                        40
-                    ],
-                    "thresh": [
-                        null,
-                        3
-                    ],
-                    "remove_bct": true,
-                    "remove_bt": true,
-                    "remove_bc": true,
-                    "mask": 0
-                },
-                "post_detection": false
-            },
-            "PowerLowFreq": {
-                "position": 2,
-                "class_name": "Power",
-                "parameters": {
-                    "bad_data": null,
-                    "do_reference_data": false,
-                    "do_zscore": false,
-                    "time_window": 10,
-                    "time_window_step": 5,
-                    "freq_band": [
-                        0.5,
-                        5
-                    ],
-                    "thresh": [
-                        null,
-                        3
-                    ],
-                    "remove_bct": true,
-                    "remove_bt": true,
-                    "remove_bc": true,
-                    "mask": 0
-                },
-                "post_detection": false
             }
         }
     },
     "bad_channels_modify": {
-        "position": 3,
+        "position": 2,
         "min_loops": 0,
         "max_loops": 1,
         "min_rejection": 0,
@@ -123,6 +58,96 @@
                 "class_name": "ShortBadSegments",
                 "parameters": {
                     "time_limit": 0.5
+                },
+                "post_detection": true
+            }
+        }
+    },
+    "huge_amplitude_abs": {
+        "position": 3,
+        "min_loops": 0,
+        "max_loops": 1,
+        "min_rejection": 0,
+        "define_bcbt": true,
+        "algorithms": {
+            "HugeAmplitudeAbsolute": {
+                "position": 1,
+                "class_name": "Amplitude",
+                "parameters": {
+                    "bad_data": null,
+                    "do_reference_data": false,
+                    "do_zscore": false,
+                    "thresh_type": "absolute",
+                    "thresh": 0.001,
+                    "mask": 0,
+                    "remove_bct": true,
+                    "remove_bt": true,
+                    "remove_bc": true
+                },
+                "post_detection": false
+            }
+        }
+    },
+    "huge_artifacts": {
+        "position": 4,
+        "min_loops": 0,
+        "max_loops": 1,
+        "min_rejection": 0,
+        "define_bcbt": true,
+        "algorithms": {
+            "HugeAmplitude": {
+                "position": 1,
+                "class_name": "Amplitude",
+                "parameters": {
+                    "bad_data": null,
+                    "do_reference_data": false,
+                    "do_zscore": false,
+                    "thresh_type": "outliers_per_channel",
+                    "thresh": [
+                        -3,
+                        3
+                    ],
+                    "mask": 0,
+                    "remove_bct": true,
+                    "remove_bt": true,
+                    "remove_bc": true
+                },
+                "post_detection": false
+            },
+            "HugeMaxChange500ms": {
+                "position": 2,
+                "class_name": "MaxChange",
+                "parameters": {
+                    "bad_data": null,
+                    "do_reference_data": false,
+                    "do_zscore": false,
+                    "thresh_type": "outliers_per_channel",
+                    "thresh": [
+                        null,
+                        3.0
+                    ],
+                    "time_window": 0.5,
+                    "time_window_step": 0.1,
+                    "mask": 0,
+                    "remove_bct": true,
+                    "remove_bt": true,
+                    "remove_bc": true
+                },
+                "post_detection": false
+            },
+            "ShortGoodSegments_3": {
+                "position": 3,
+                "class_name": "ShortGoodSegments",
+                "parameters": {
+                    "time_limit": 0.5
+                },
+                "post_detection": true
+            },
+            "ShortBadSegments_4": {
+                "position": 4,
+                "class_name": "ShortBadSegments",
+                "parameters": {
+                    "time_limit": 0.1
                 },
                 "post_detection": true
             }

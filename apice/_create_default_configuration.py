@@ -145,7 +145,7 @@ def main():
         'time_window': 10,
         'time_window_step': 5,
         'freq_band': [20, 40],
-        'thresh': [None, 2],
+        'thresh': [None, 3],
         'remove_bct': True,
         'remove_bt': True,
         'remove_bc': True,
@@ -158,7 +158,7 @@ def main():
         'time_window': 10,
         'time_window_step': 5,
         'freq_band': [0.5, 5],
-        'thresh': [None, 2],
+        'thresh': [None, 3],
         'remove_bct': True,
         'remove_bt': True,
         'remove_bc': True,
@@ -415,6 +415,104 @@ def main():
     }, algorithm_name='ShortGoodSegments', post_detection=True)
 
     artcfg.save_to_json(Path(__file__).parent / "default_cfg" / 'detect_artifacts_all_config.json')
+
+    # %% Create the default configuration for detecting bad data before ICA
+    # ---------------------------------------------------------------------------------
+    artcfg_bad_cha = ArtifactsConfiguration()
+
+    artcfg_bad_cha.add_algorithm_group('bad_channels_basic', max_loops=1, min_rejection=0, define_bcbt=True)
+    artcfg_bad_cha.add_algorithm('bad_channels_basic', 'FlatChannel', {
+        'bad_data': None,
+        'do_reference_data': False,
+        'do_zscore': False,
+        'time_window': 10,
+        'time_window_step': 5,
+        'min_change': 1e-7,
+        'thresh': 5,
+        'mask': 0,
+    })
+    artcfg_bad_cha.add_algorithm('bad_channels_basic', 'ChannelCorr', {
+        'bad_data': None,
+        'do_reference_data': False,
+        'do_zscore': False,
+        'time_window': 10,
+        'time_window_step': 5,
+        'top_channel_corr': 5,
+        'thresh': 0.4,
+        'mask': 0,
+    })
+    
+    artcfg_bad_cha.add_algorithm_group('bad_channels_modify', max_loops=1, min_rejection=0, define_bcbt=True)
+    artcfg_bad_cha.add_algorithm('bad_channels_modify', 'ShortGoodSegments', {
+        'time_limit': 10,
+    }, post_detection=True)
+    artcfg_bad_cha.add_algorithm('bad_channels_modify', 'ShortBadSegments', {
+        'time_limit': 0.500,
+    }, post_detection=True)
+
+
+    artcfg_huge = ArtifactsConfiguration()   
+    
+    artcfg_huge.add_algorithm_group('huge_amplitude_abs', max_loops=1, min_rejection=0, define_bcbt=True)
+    artcfg_huge.add_algorithm('huge_amplitude_abs', 'Amplitude', {
+        'bad_data': None,
+        'do_reference_data': False,
+        'do_zscore': False,
+        'thresh_type': 'absolute',
+        'thresh': 1000*1e-6,
+        'mask': 0,
+        'remove_bct': True,
+        'remove_bt': True,
+        'remove_bc': True,
+    }, algorithm_name='HugeAmplitudeAbsolute')
+
+    artcfg_huge.add_algorithm_group('huge_artifacts', max_loops=1, min_rejection=0, define_bcbt=True)
+    artcfg_huge.add_algorithm('huge_artifacts', 'Amplitude', {
+        'bad_data': None,
+        'do_reference_data': False,
+        'do_zscore': False,
+        'thresh_type': 'outliers_per_channel',
+        'thresh': [-3, 3],
+        'mask': 0,
+        'remove_bct': True,
+        'remove_bt': True,
+        'remove_bc': True,
+    }, algorithm_name='HugeAmplitude')
+    artcfg_huge.add_algorithm('huge_artifacts', 'MaxChange', {
+        'bad_data': None,
+        'do_reference_data': False,
+        'do_zscore': False,
+        'thresh_type': 'outliers_per_channel',
+        'thresh': [None, 3.0],
+        'time_window': 0.500,
+        'time_window_step': 0.100,
+        'mask': 0,
+        'remove_bct': True,
+        'remove_bt': True,
+        'remove_bc': True,
+    }, algorithm_name='HugeMaxChange500ms')
+    
+    artcfg_huge.add_algorithm('huge_artifacts', 'ShortGoodSegments', {
+        'time_limit': 0.500,
+    }, post_detection=True)
+    artcfg_huge.add_algorithm('huge_artifacts', 'ShortBadSegments', {
+        'time_limit': 0.100,
+    }, post_detection=True)
+
+
+    artcfg = concatenate_configurations([artcfg_bad_cha.cfg, artcfg_huge.cfg])
+    artcfg.save_to_json(Path(__file__).parent / "default_cfg" / 'detect_for_ica_config.json')
+
+    # %% Create default configuration for BC and BT definition for ICA
+    define_bcbt_raw_cfg = {}
+    define_bcbt_raw_cfg['thresh_bad_channels'] = [0.7, 0.5]
+    define_bcbt_raw_cfg['thresh_bad_times'] = [0.7, 0.5]
+    define_bcbt_raw_cfg['min_good_time'] = 2.000
+    define_bcbt_raw_cfg['min_bad_time'] = 0.020
+    define_bcbt_raw_cfg['mask_time'] = 0.500
+    # save to json
+    with open(Path(__file__).parent / "default_cfg" / 'define_bcbt_raw_ica_config.json', 'w') as f:
+        json.dump(define_bcbt_raw_cfg, f, indent=4)
 
 
 if __name__ == '__main__':
