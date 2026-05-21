@@ -1392,6 +1392,9 @@ def segment_default_pipeline(raw,
                                    cfg_bad_epochs=cfg_bad_epochs,
                                    )
     
+    epochs_good = epochs.copy()
+    epochs_good.remove_bad_epochs()
+
     # n_channels = epochs.info['nchan']
     # epoch_colors = [['black' for i in range(n_channels)] for i in range(len(epochs))]
     # for i in range(len(epochs)):
@@ -1401,26 +1404,26 @@ def segment_default_pipeline(raw,
     #         epoch_colors[i] = ['black' if not epochs.artifacts.BC[i][j,0] else 'blue' for j in range(n_channels)]
     # epochs.plot(epoch_colors=epoch_colors)
 
-    # Add epochs in report
-    if report is not None:
-        try:
-            report.add_epochs(epochs, "Epochs", psd=True, replace=True)
-        except Exception as e:
-            print(f"Warning: Could not add epochs to report: {e}")
-    
     # Add epochs artifacts matrix
     if report is not None:
         try:
             fig = epochs.plot_artifact_structure(color_scheme='jet')
-            report.add_figure(fig, "Artifacts Matrix", section="Epochs", replace=True)
+            report.add_figure(fig, "Artifacts Matrix", section="Epochs All", replace=True)
         except Exception as e:
             print(f"Warning: Could not add epochs artifacts matrix to report: {e}")
 
+    # Add epochs in report
+    if report is not None:
+        try:
+            report.add_epochs(epochs_good, "Epochs Good", psd=True, replace=True)
+        except Exception as e:
+            print(f"Warning: Could not add epochs to report: {e}")
+    
     # Add topomap of bad electrodes
     if report is not None:
         try:
-            fig = epochs.plot_percentage_of_bad_data_across_sensors()
-            report.add_figure(fig, "Bad data across electrodes", section="Epochs", replace=True)
+            fig = epochs_good.plot_percentage_of_bad_data_across_sensors()
+            report.add_figure(fig, "Bad data across electrodes", section="Epochs Good", replace=True)
         except Exception as e:
             print(f"Warning: Could not add epochs bad-data topomap to report: {e}")
 
@@ -1428,7 +1431,7 @@ def segment_default_pipeline(raw,
     if report is not None:
         try:
             fig = plot_summary(summary.summary_df, metrics = ["%_corrected_data", "%_bad_data", "%_bad_channels", "%_bad_times", "%_bad_epochs"])
-            report.add_figure(fig, "Rejected Data Summary", section="Epochs", replace=True)
+            report.add_figure(fig, "Rejected Data Summary", section="Epochs Good", replace=True)
         except Exception as e:
             print(f"Warning: Could not add rejected data summary to report: {e}")
 
@@ -1458,8 +1461,6 @@ def segment_default_pipeline(raw,
     if save_epochs:
         fullpath_epochs = output_dir / (file_name + epoch_data_suffix + '.fif')
         if save_only_good_epochs:
-            epochs_good = epochs.copy()
-            epochs_good.remove_bad_epochs()
             epochs_good.export(fullpath_epochs, overwrite=True)
         else:
             epochs.export(fullpath_epochs, overwrite=True)
