@@ -40,9 +40,7 @@ def main():
     # Frequency parameters for band-pass filtering (set to None to not apply band-pass filtering)
     L_FREQ = 0.2
     H_FREQ = 20
-    L_TRANS_BANDWIDTH = 0.1
-    H_TRANS_BANDWIDTH = 10
-
+    
     # Time window for epoching the data around the events of interest (e.g., from -2 to 2 seconds around the event).
     EVENT_TIME_WINDOW = (-0.2, 2.0)
 
@@ -95,8 +93,6 @@ def main():
         data_selection_method=DATA_SELECTION_METHOD,
         l_freq=L_FREQ,
         h_freq=H_FREQ,
-        l_trans_bandwidth=L_TRANS_BANDWIDTH,
-        h_trans_bandwidth=H_TRANS_BANDWIDTH,
         kwargs_events_from_annotations_for_metadata=KWARGS_EVENTS_FROM_ANNOTATIONS_FOR_METADATA,
         kwargs_make_metadata=KWARGS_MAKE_METADATA,                             
         evoked_by=EVOKED_BY,

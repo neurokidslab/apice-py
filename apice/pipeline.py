@@ -6,10 +6,8 @@ generation.
 """
 
 import json
-
 import numpy as np
 import pandas as pd
-import sys
 import time
 from pathlib import Path
 from datetime import datetime
@@ -22,355 +20,14 @@ from datetime import datetime, timezone
 
 
 import mne
-from mne import BaseEpochs
 
-
+from apice.pipeline_utils import (SummaryPreprocessing, SummaryEpochs, StdOutLogger)
 from apice.data_structures import RawAPICE
 from apice.io import load_rawapice
 from apice.utils import (get_onset_and_duration, get_cfg)
 from apice.filter import (Filter, ZapLine)
+from apice.ica import clean_ica
 
-# %% CLASSES DEFINITIONS
-class Summary():
-    """Base helper for CSV-backed processing summaries.
-
-    Parameters
-    ----------
-    output_folder : str | pathlib.Path
-        Directory where the summary CSV will be stored.
-    output_file : str
-        Summary filename.
-    columns : list of str, default=['file_id', 'step', 'length', 'corrected_data', 'bad_data', 'bad_channels', 'bad_times']
-        Columns used when initializing a new summary dataframe.
-    try_loading : bool, default=True
-        If True, load an existing summary file when present.
-    """
-
-    def __init__(self, 
-                 output_folder,
-                 output_file,
-                 columns=['file_id', 'step', 'length', 'corrected_data', 'bad_data', 'bad_channels', 'bad_times'],
-                 try_loading=True):
-        
-        if 'file_id' not in columns or 'step' not in columns:
-            raise ValueError("Columns must include 'file_id' and 'step'")
-        
-        self.output_folder = Path(output_folder)
-        self.output_file = output_file
-        self.output_full_path = self.output_folder / output_file
-        if try_loading and self.output_full_path.exists():
-            self.load()
-        else:
-            self.summary_df = pd.DataFrame(columns=columns)
-        
-    def load(self):
-        """Load summary data from disk if the CSV exists.
-
-        Returns
-        -------
-        None
-        """
-        if self.output_full_path.exists():
-            self.summary_df = pd.read_csv(self.output_full_path)
-        else:
-            print(f"File {self.output_full_path} does not exist. Summary could not be loaded.")
-
-    def save(self):
-        """Persist the current summary dataframe to disk.
-
-        Returns
-        -------
-        None
-        """
-        self.output_folder.mkdir(parents=True, exist_ok=True)
-        self.summary_df.to_csv(self.output_full_path, index=False)
-    
-    def remove_file_from_summary(self, file_id):
-        """Remove all rows associated with one file identifier.
-
-        Parameters
-        ----------
-        file_id : str
-            File identifier to remove.
-
-        Returns
-        -------
-        None
-        """
-        self.summary_df = self.summary_df[self.summary_df['file_id'] != file_id]
-
-    def remove_file_step_from_summary(self, file_id, step):
-        """Remove rows associated with a specific file and step.
-
-        Parameters
-        ----------
-        file_id : str
-            File identifier to filter.
-        step : str
-            Processing step label to remove.
-
-        Returns
-        -------
-        None
-        """
-        self.summary_df = self.summary_df[~((self.summary_df['file_id'] == file_id) & (self.summary_df['step'] == step))]
-
-
-class SummaryPreprocessing(Summary):
-    """Summary table specialized for continuous preprocessing outputs."""
-
-    def __init__(self, 
-                 output_folder, 
-                 file_name,
-                 file_id=None,
-                 outputfile_subfix="-summary-preproc.csv", 
-                 try_loading=True,
-                 ):
-        """Initialize preprocessing summary storage.
-
-        Parameters
-        ----------
-        output_folder : str | pathlib.Path
-            Directory where the summary CSV is stored.
-        file_name : str | pathlib.Path
-            Source filename used to derive the summary filename.
-        file_id : str | None, default=None
-            Custom file identifier. If None, derived from ``file_name``.
-        outputfile_subfix : str, default='-summary-preproc.csv'
-            Filename suffix for the summary CSV.
-        try_loading : bool, default=True
-            If True, load an existing summary file if available.
-
-        Returns
-        -------
-        None
-        """
-        print("Initializing SummaryPreprocessing object")
-        file_name = Path(file_name).stem
-        outputfile = file_name + outputfile_subfix
-        super().__init__(output_folder=output_folder, 
-                         output_file=outputfile, 
-                         columns=[
-                             "file_id", 
-                             "step", 
-                             "length", 
-                             "%_corrected_data", 
-                             "%_bad_data", 
-                             "%_bad_channels", 
-                             "%_bad_times",
-                             ],
-                         try_loading=try_loading)
-        if file_id is None:
-            file_id = file_name
-        self.file_id = file_id
-
-    def add_to_summary(self, step, raw, overwrite=False):
-        """Append one preprocessing summary row.
-
-        Parameters
-        ----------
-        step : str
-            Processing step label.
-        raw : mne.io.BaseRaw
-            Raw object whose artifact metrics will be summarized.
-        overwrite : bool, default=False
-            If True, replace an existing row for the same file and step.
-
-        Returns
-        -------
-        None
-        """
-        
-        if not isinstance(raw, mne.io.BaseRaw):
-            raise TypeError("raw must be an instance of mne.io.Raw")
-        
-        if any(((self.summary_df['file_id'] == self.file_id) & (self.summary_df['step'] == step))) and not overwrite:
-            print(f"File {self.file_id} and step {step} already exist in the summary. Use overwrite=True to overwrite the existing entry.")
-            return
-        
-        if any(((self.summary_df['file_id'] == self.file_id) & (self.summary_df['step'] == step))) and overwrite:
-            self.remove_file_step_from_summary(self.file_id, step)
-        
-        length = raw.times.max()
-        if hasattr(raw, 'artifacts'):
-            corrected_data = np.round(np.sum(raw.artifacts.CCT) / np.size(raw.artifacts.CCT) * 100, 2)
-            bad_data = np.round(np.sum(raw.artifacts.BCT) / np.size(raw.artifacts.BCT) * 100, 2)
-            bad_channels = np.round(np.sum(raw.artifacts.BC) / np.size(raw.artifacts.BC) * 100, 2)
-            bad_times = np.round(np.sum(raw.artifacts.BT) / np.size(raw.artifacts.BT) * 100, 2)
-        else:
-            corrected_data = np.nan
-            bad_data = np.nan
-            bad_channels = np.nan
-            bad_times = np.nan
-
-        self.summary_df.loc[len(self.summary_df)] = [self.file_id, step, length, corrected_data, bad_data, bad_channels, bad_times]
-
-class SummaryEpochs(Summary):
-    """Summary table specialized for segmented/epoched outputs."""
-
-    def __init__(self, 
-                 output_folder, 
-                 file_name,
-                 file_id=None,
-                 outputfile_subfix="summary-epo.csv", 
-                 try_loading=True,
-                 ):
-        """Initialize epochs summary storage.
-
-        Parameters
-        ----------
-        output_folder : str | pathlib.Path
-            Directory where the summary CSV is stored.
-        file_name : str | pathlib.Path
-            Source filename used to derive the summary filename.
-        file_id : str | None, default=None
-            Custom file identifier. If None, derived from ``file_name``.
-        outputfile_subfix : str, default='summary-epo.csv'
-            Filename suffix for the summary CSV.
-        try_loading : bool, default=True
-            If True, load an existing summary file if available.
-
-        Returns
-        -------
-        None
-        """
-        print("Initializing SummaryEpochs object")
-        file_name = Path(file_name).stem
-        outputfile = file_name + outputfile_subfix
-        super().__init__(output_folder=output_folder, 
-                         output_file=outputfile, 
-                         columns=[
-                             "file_id",
-                             "step",
-                             "n_epochs",
-                             "n_remaining_epochs",
-                             "n_rejected_epochs",
-                             "length", 
-                             "%_corrected_data", 
-                             "%_bad_data", 
-                             "%_bad_channels", 
-                             "%_bad_times",
-                             "%_bad_epochs",
-                             ],
-                         try_loading=try_loading)
-        if file_id is None:
-            file_id = file_name
-        self.file_id = file_id
-
-    def add_to_summary(self, step, epochs, overwrite=False):
-        """Append one epochs summary row.
-
-        Parameters
-        ----------
-        step : str
-            Processing step label.
-        epochs : mne.BaseEpochs
-            Epochs object whose artifact metrics will be summarized.
-        overwrite : bool, default=False
-            If True, replace an existing row for the same file and step.
-
-        Returns
-        -------
-        None
-        """
-        
-        if not isinstance(epochs, BaseEpochs):
-            raise TypeError("epochs must be an instance of mne.BaseEpochs")
-        
-        if any(((self.summary_df['file_id'] == self.file_id) & (self.summary_df['step'] == step))) and not overwrite:
-            print(f"File {self.file_id} and step {step} already exist in the summary. Use overwrite=True to overwrite the existing entry.")
-            return
-        
-        if any(((self.summary_df['file_id'] == self.file_id) & (self.summary_df['step'] == step))) and overwrite:
-            self.remove_file_step_from_summary(self.file_id, step)
-        
-        length = epochs.times.max() - epochs.times.min()
-        drop_log = np.asarray(epochs.drop_log, dtype=list)
-        no_of_epochs = np.shape(drop_log)[0]
-        no_of_remaining_epochs = np.shape(epochs._data)[0]
-        if hasattr(epochs, 'artifacts'):
-            corrected_data = np.round(np.sum(epochs.artifacts.CCT) / np.size(epochs.artifacts.CCT) * 100, 2)
-            bad_data = np.round(np.sum(epochs.artifacts.BCT) / np.size(epochs.artifacts.BCT) * 100, 2)
-            bad_channels = np.round(np.sum(epochs.artifacts.BC) / np.size(epochs.artifacts.BC) * 100, 2)
-            bad_times = np.round(np.sum(epochs.artifacts.BT) / np.size(epochs.artifacts.BT) * 100, 2)
-            bad_epochs = np.round(np.sum(epochs.artifacts.BE) / np.size(epochs.artifacts.BE) * 100, 2)
-            no_of_rejected_epochs = np.sum(epochs.artifacts.BE)
-        else:
-            corrected_data = np.nan
-            bad_data = np.nan
-            bad_channels = np.nan
-            bad_times = np.nan
-            bad_epochs = np.nan
-            no_of_rejected_epochs = np.nan
-        self.summary_df.loc[len(self.summary_df)] = [self.file_id, step, no_of_epochs, no_of_remaining_epochs, no_of_rejected_epochs,
-                                            length, corrected_data, bad_data, bad_channels, bad_times, bad_epochs]
-        
-
-class StdOutLogger():
-    """Redirect standard output to a log file during pipeline execution.
-
-    Parameters
-    ----------
-    output_folder : str | pathlib.Path
-        Directory that will store the log file.
-    file_name : str | pathlib.Path
-        Base filename used to derive the log filename.
-    """
-
-    def __init__(self, output_folder, file_name):
-        """Initialize logger paths.
-
-        Parameters
-        ----------
-        output_folder : str | pathlib.Path
-            Destination folder for log output.
-        file_name : str | pathlib.Path
-            Base name used to create the log filename.
-
-        Returns
-        -------
-        None
-        """
-        file_name = Path(file_name).stem
-        self.output_folder = Path(output_folder)
-        self.output_file = f"{file_name}_log.txt"
-        self.output_full_path = self.output_folder / self.output_file
-
-    def restore_stdout(self):
-        """Reset the log file contents before a new run.
-
-        Returns
-        -------
-        None
-        """
-        self.output_folder.mkdir(parents=True, exist_ok=True)
-        self.output_full_path.write_text("")
-
-    def redirect_stdout_to_file(self, restore=False):
-        """Redirect ``sys.stdout`` to the configured log file.
-
-        Parameters
-        ----------
-        restore : bool, default=False
-            If True, clear the existing log file before redirecting.
-
-        Returns
-        -------
-        None
-        """
-        self.output_folder.mkdir(parents=True, exist_ok=True)
-        if restore:
-            self.restore_stdout()
-        sys.stdout = open(self.output_full_path, "w")
-
-    def close(self):
-        """Close the redirected standard-output stream.
-
-        Returns
-        -------
-        None
-        """
-        sys.stdout.close()
 
 
 
@@ -401,10 +58,12 @@ def run_preprocessing(input_dir,
                       save_report=True,
                       save_summary=True,
                       show_figures=False,
+                      apply_ica=False,
+                      ica_parameters=None,
                       l_freq=0.10,
                       h_freq=40,
-                      l_trans_bandwidth=0.1,
-                      h_trans_bandwidth=10,
+                      l_freq_artifacts=None,
+                      h_freq_artifacts=None,
                       line_noise_freq=None,
                       cfg_bad_channels_detection=None,
                       cfg_glitches_detection=None,
@@ -475,10 +134,12 @@ def run_preprocessing(input_dir,
         High-pass cutoff frequency in Hz.
     h_freq : float | None, default=40
         Low-pass cutoff frequency in Hz.
-    l_trans_bandwidth : float, default=0.1
-        High-pass transition bandwidth.
-    h_trans_bandwidth : float, default=10
-        Low-pass transition bandwidth.
+    l_freq_artifacts : float | None, default=None
+        High-pass cutoff frequency for the copy of the data used in artifact detection steps. 
+        None to use the same filtering as for the rest of preprocessing steps (i.e., l_freq).
+    h_freq_artifacts : float | None, default=None
+        Low-pass cutoff frequency for the copy of the data used in artifact detection steps. 
+        None to use the same filtering as for the rest of preprocessing steps (i.e., h_freq).
     line_noise_freq : float | None, default=None
         Line noise frequency to be removed.
     cfg_bad_channels_detection : None | str | pathlib.Path | dict, default=None
@@ -501,6 +162,10 @@ def run_preprocessing(input_dir,
     None
         Writes preprocessing outputs for each selected file.
     """
+
+    # Check the if apply_ica flag is True then ica_parameters must be provided
+    if apply_ica and ica_parameters is None:
+        raise ValueError("If apply_ica is True, ica_parameters must be provided.")
     
     # Initialize output folders
     output_dir = Path(output_dir)
@@ -557,8 +222,8 @@ def run_preprocessing(input_dir,
                                         resample_freq=resample_freq,
                                         stim_channels_to_annotations=stim_channels_to_annotations,
                                         montage=montage,
-                                        )
-            
+                                        )           
+
             # Run APICE default preprocessing pipeline
             was_interactive = plt.isinteractive()
             original_backend = plt.get_backend()
@@ -580,9 +245,9 @@ def run_preprocessing(input_dir,
                                             reference_channels=reference_channels,
                                             l_freq=l_freq,
                                             h_freq=h_freq,
-                                            l_trans_bandwidth=l_trans_bandwidth,
-                                            h_trans_bandwidth=h_trans_bandwidth,
                                             line_noise_freq=line_noise_freq,
+                                            l_freq_artifacts=l_freq_artifacts,
+                                            h_freq_artifacts=h_freq_artifacts,
                                             cfg_bad_channels_detection=cfg_bad_channels_detection,
                                             cfg_glitches_detection=cfg_glitches_detection,
                                             cfg_target_pca=cfg_target_pca,
@@ -611,8 +276,6 @@ def run_segmentation(input_dir,
                      data_selection_method="all",
                      l_freq=None,
                      h_freq=None,
-                     l_trans_bandwidth=0.1,
-                     h_trans_bandwidth=10,
                      baseline=None, 
                      kwargs_events_from_annotations_for_metadata=None,
                      kwargs_make_metadata=None,                             
@@ -651,10 +314,6 @@ def run_segmentation(input_dir,
         Optional high-pass cutoff used before segmentation.
     h_freq : float | None, default=None
         Optional low-pass cutoff used before segmentation.
-    l_trans_bandwidth : float, default=0.1
-        High-pass transition bandwidth.
-    h_trans_bandwidth : float, default=10
-        Low-pass transition bandwidth.
     baseline : tuple[float, float] | None, default=None
         Baseline window passed to MNE epoching.
     kwargs_events_from_annotations_for_metadata : dict | None, default=None
@@ -736,8 +395,6 @@ def run_segmentation(input_dir,
                             file_name=file.stem,
                             l_freq=l_freq,
                             h_freq=h_freq,
-                            l_trans_bandwidth=l_trans_bandwidth,
-                            h_trans_bandwidth=h_trans_bandwidth,
                             baseline=baseline, 
                             kwargs_events_from_annotations_for_metadata=kwargs_events_from_annotations_for_metadata,
                             kwargs_make_metadata=kwargs_make_metadata,                             
@@ -781,7 +438,11 @@ def preprocess_initial_steps(raw,
                           stim_channels_to_annotations=True,
                           montage=None,
                           head_size=None,
-                            ):
+                          l_freq=0.10,
+                          h_freq=40,
+                          line_noise_freq=None,
+                          n_jobs=-1,
+                         ):
     """Apply structural preprocessing steps before APICE artifact handling.
 
     Parameters
@@ -806,7 +467,15 @@ def preprocess_initial_steps(raw,
         Montage object, built-in montage name, or path to a montage file.
     head_size : float | None, default=None
         Head-size parameter forwarded to MNE montage creation when relevant.
-
+    l_freq : float, default=0.10
+        High-pass cutoff frequency in Hz.
+    h_freq : float | None, default=40
+        Low-pass cutoff frequency in Hz.
+    line_noise_freq : float | None, default=None
+        Line noise frequency to be removed.
+    n_jobs : int, default=-1
+        Number of parallel jobs for compute-intensive steps.
+    
     Returns
     -------
     raw : mne.io.BaseRaw
@@ -873,6 +542,21 @@ def preprocess_initial_steps(raw,
     if raw.get_montage() is None:
         raise ValueError("raw must have a montage. Please set the montage before preprocessing.")
     
+
+    # FILTER -----------------------------------------------------------------------------------------------
+    
+    # High pass filter to remove the slow drifts
+    Filter(raw, l_freq=l_freq, h_freq=None, n_jobs=n_jobs)    
+
+    # Optional line noise filter
+    if line_noise_freq is not None: 
+        zap_worker = ZapLine(raw, fline=line_noise_freq, chunk_duration=30, n_jobs=n_jobs)
+        raw, zap_fig = zap_worker.apply(raw)
+    
+    # Low pass filter
+    Filter(raw, l_freq=None, h_freq=h_freq, n_jobs=n_jobs)
+
+
     # END TIME ------------------------------------------------------------------------------------------------
     sim_time_end = timedelta(seconds=np.round(time.time() - sim_time_start))
     print(f"\nInitial preprocessing steps completed in: {sim_time_end}, in hh:mm:ss")
@@ -895,8 +579,8 @@ def preprocess_apice_default(raw,
                              reference_channels=None,
                              l_freq=0.10,
                              h_freq=40,
-                             l_trans_bandwidth=0.1,
-                             h_trans_bandwidth=10,
+                             l_freq_artifacts=None,
+                             h_freq_artifacts=None,
                              line_noise_freq=None,
                              cfg_define_bcbt_raw=None,
                              cfg_bad_channels_detection=None,
@@ -937,10 +621,10 @@ def preprocess_apice_default(raw,
         High-pass cutoff frequency in Hz.
     h_freq : float | None, default=40
         Low-pass cutoff frequency in Hz.
-    l_trans_bandwidth : float, default=0.1
-        High-pass transition bandwidth.
-    h_trans_bandwidth : float, default=10
-        Low-pass transition bandwidth.
+    l_freq_artifacts : float, default=None
+        High-pass cutoff frequency used for artifact detection.
+    h_freq_artifacts : float, default=None
+        Low-pass cutoff frequency used for artifact detection.
     line_noise_freq : float | None, default=None
         Line noise frequency to be removed.
     cfg_define_bcbt_raw : None | str | pathlib.Path | dict, default=None
@@ -1054,8 +738,9 @@ def preprocess_apice_default(raw,
     if save_log: logger.redirect_stdout_to_file(restore=True)
 
     # FILTER -----------------------------------------------------------------------------------------------
-        # High pass filter to remove the slow drifts
-    Filter(raw, l_freq=l_freq, h_freq=None, l_trans_bandwidth=l_trans_bandwidth, h_trans_bandwidth=h_trans_bandwidth, n_jobs=n_jobs)    
+    
+    # High pass filter to remove the slow drifts
+    Filter(raw, l_freq=l_freq, h_freq=None, n_jobs=n_jobs)    
 
     # Optional line noise filter
     if line_noise_freq is not None: 
@@ -1066,7 +751,7 @@ def preprocess_apice_default(raw,
             plt.close(zap_fig)
 
     # Low pass filter
-    Filter(raw, l_freq=None, h_freq=h_freq, l_trans_bandwidth=l_trans_bandwidth, h_trans_bandwidth=h_trans_bandwidth, n_jobs=n_jobs)
+    Filter(raw, l_freq=None, h_freq=h_freq, n_jobs=n_jobs)
 
 
     # ARTIFACT DETECTION AND CORRECTION -----------------------------------------------------------------------------
@@ -1112,22 +797,22 @@ def preprocess_apice_default(raw,
 
 
     # Detect bad channels
-    raw.detect_bad_channels(cfg=cfg_bad_channels_detection)
+    raw.detect_bad_channels(cfg=cfg_bad_channels_detection, l_freq=l_freq_artifacts, h_freq=h_freq_artifacts)
     raw.deal_with_reference_channels(reference_channels)
     summary.add_to_summary('artifacts_detection_BadElectrodes', raw, overwrite=True)
 
     # Detect glitches
-    raw.detect_glitches(cfg=cfg_glitches_detection)
+    raw.detect_glitches(cfg=cfg_glitches_detection, l_freq=l_freq_artifacts, h_freq=h_freq_artifacts)
     raw.deal_with_reference_channels(reference_channels)
     summary.add_to_summary('artifacts_detection_Glitches', raw, overwrite=True)
 
     # Correct glitches
     raw.correct_target_pca(cfg=cfg_target_pca)
-    Filter(raw, l_freq=l_freq, h_freq=None, l_trans_bandwidth=l_trans_bandwidth, h_trans_bandwidth=h_trans_bandwidth, n_jobs=n_jobs)
+    Filter(raw, l_freq=l_freq, h_freq=None, n_jobs=n_jobs)
     summary.add_to_summary('artifacts_correction_TargetPCA', raw, overwrite=True)
 
     # Detect artifacts
-    raw.detect_artifacts(cfg=cfg_artifacts_detection)
+    raw.detect_artifacts(cfg=cfg_artifacts_detection, l_freq=l_freq_artifacts, h_freq=h_freq_artifacts)
     raw.deal_with_reference_channels(reference_channels)
     summary.add_to_summary('artifacts_detection_Artifacts', raw, overwrite=True)
 
@@ -1149,7 +834,7 @@ def preprocess_apice_default(raw,
     
     # Correct artifacts using spherical spline interpolation per segment
     raw.correct_spline_segments(cfg=cfg_spline_segments)
-    Filter(raw, l_freq=l_freq, h_freq=None, l_trans_bandwidth=l_trans_bandwidth, h_trans_bandwidth=h_trans_bandwidth, n_jobs=n_jobs)
+    Filter(raw, l_freq=l_freq, h_freq=None, n_jobs=n_jobs)
     summary.add_to_summary('artifacts_correction_Segments', raw, overwrite=True)
 
     # Correct channels using spherical spline interpolation
@@ -1157,7 +842,7 @@ def preprocess_apice_default(raw,
     summary.add_to_summary('artifacts_correction_BadChannels', raw, overwrite=True)
 
     # Re-detect bad data after correction to check if there are still bad channels or time segments that need to be marked as bad after the correction
-    raw.detect_artifacts(cfg=cfg_artifacts_detection)
+    raw.detect_artifacts(cfg=cfg_artifacts_detection, l_freq=l_freq_artifacts, h_freq=h_freq_artifacts)
     raw.deal_with_reference_channels(reference_channels)    
     summary.add_to_summary('artifacts_detection_ArtifactsPostCorrection', raw, overwrite=True)
 
@@ -1267,8 +952,6 @@ def segment_default_pipeline(raw,
                    file_name=None,
                    l_freq=None,
                    h_freq=None,
-                   l_trans_bandwidth=0.1,
-                   h_trans_bandwidth=10,
                    baseline=None, 
                    kwargs_events_from_annotations_for_metadata=None,
                    kwargs_make_metadata=None,                             
@@ -1304,10 +987,6 @@ def segment_default_pipeline(raw,
         Optional high-pass cutoff before segmentation.
     h_freq : float | None, default=None
         Optional low-pass cutoff before segmentation.
-    l_trans_bandwidth : float, default=0.1
-        High-pass transition bandwidth.
-    h_trans_bandwidth : float, default=10
-        Low-pass transition bandwidth.
     baseline : tuple[float, float] | None, default=None
         Baseline correction window passed to MNE epoching.
     kwargs_events_from_annotations_for_metadata : dict | None, default=None
@@ -1429,7 +1108,7 @@ def segment_default_pipeline(raw,
 
 
     # FILTER -----------------------------------------------------------------------------------------------
-    Filter(raw, l_freq=l_freq, h_freq=h_freq, l_trans_bandwidth=l_trans_bandwidth, h_trans_bandwidth=h_trans_bandwidth, n_jobs=n_jobs)
+    Filter(raw, l_freq=l_freq, h_freq=h_freq, n_jobs=n_jobs)
 
     # SEGMENTATION ----------------------------------------------------------------------------------------------
     

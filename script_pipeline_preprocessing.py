@@ -72,11 +72,24 @@ def main():
     # Frequency parameters for band-pass filtering (set to None to not apply band-pass filtering)
     L_FREQ = 0.1
     H_FREQ = 40
-    L_TRANS_BANDWIDTH = 0.1
-    H_TRANS_BANDWIDTH = 10
-
+    
     # Frequency for line noise removal (set to None to not apply line noise removal). The harmonics of the line noise frequency will also be removed up to the Nyquist frequency.
-    LINE_NOISE_FREQ = None
+    LINE_NOISE_FREQ = 50
+
+    # Filter parameters to apply for artifact detection steps. 
+    # A copy of the data will be filtered with these parameters and used only for artifact detection steps (e.g., bad channels detection, artifacts detection, etc.) to improve the detection of artifacts. 
+    # Set to None to not apply specific filtering for artifact detection and use the same filtered data as for the rest of preprocessing steps (i.e., l_freq, h_freq, etc.). 
+    L_FREQ_ARTIFACTS = None
+    H_FREQ_ARTIFACTS = None
+
+    # Parameter for ICA if applied
+    APPLY_ICA = False
+
+    ICA_PARAMETERS = {
+        'n_components': 20,  # Number of ICA components to compute. If float between 0 and 1, select the number of components to explain the specified variance. If int > 1, select the specified number of components. If None, select all components.
+        'method': 'fastica',  # ICA method to use (e.g., 'fastica', 'infomax', 'picard', etc.). See MNE documentation for more details.
+        'random_state': 42,  # Random state for ICA reproducibility.
+    }
 
     # Configuration parameters for specific preprocessing steps (e.g., bad channels detection, artifacts detection, etc.). 
     # Set to None to apply the default configuration.
@@ -126,8 +139,8 @@ def main():
         show_figures=SHOW_FIGURES,
         l_freq=L_FREQ,
         h_freq=H_FREQ,
-        l_trans_bandwidth=L_TRANS_BANDWIDTH,
-        h_trans_bandwidth=H_TRANS_BANDWIDTH,
+        l_freq_artifacts=L_FREQ_ARTIFACTS,
+        h_freq_artifacts=H_FREQ_ARTIFACTS,
         line_noise_freq=LINE_NOISE_FREQ,
         n_jobs=N_JOBS,
         cfg_bad_channels_detection=CFG_BAD_CHANNELS_DETECTION,
