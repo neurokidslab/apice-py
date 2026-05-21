@@ -913,6 +913,7 @@ class ArtifactsEpochs(Artifacts):
         if not kwargs:
             cfg_define_bcbt_epochs = get_cfg(None, 'define_bcbt_epochs_config.json')
         super().__init__(epochs, **cfg_define_bcbt_epochs)
+        self.rejection_reasons = [set() for _ in range(self.n_epochs)]
 
     def update_bc(self, bc):
         """Merge a new epoch-wise bad-channel mask into ``BC``."""
@@ -952,6 +953,7 @@ class ArtifactsEpochs(Artifacts):
     def reset_be(self):
         """Reset ``BE`` to all-good values."""
         self.BE = np.full(self.n_epochs, False)
+        self.rejection_reasons = [set() for _ in range(self.n_epochs)]
 
     def include_short_bad_segments(self, time_limit):
         """Restore very short bad segments in each epoch."""

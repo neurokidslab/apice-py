@@ -1412,10 +1412,18 @@ def segment_default_pipeline(raw,
         except Exception as e:
             print(f"Warning: Could not add epochs artifacts matrix to report: {e}")
 
+    # Add epoch rejection summary (all epochs, with rejection reasons)
+    if report is not None:
+        try:
+            fig = epochs.plot_rejection_summary()
+            report.add_figure(fig, "Rejection Summary", section="Epochs All", replace=True)
+        except Exception as e:
+            print(f"Warning: Could not add epoch rejection summary to report: {e}")
+
     # Add epochs in report
     if report is not None:
         try:
-            report.add_epochs(epochs_good, "Epochs Good", psd=True, replace=True)
+            report.add_epochs(epochs_good, "Epochs Good", psd=False, replace=True)
         except Exception as e:
             print(f"Warning: Could not add epochs to report: {e}")
     

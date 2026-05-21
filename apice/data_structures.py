@@ -817,44 +817,48 @@ class EpochsAPICE(mne.EpochsArray):
         -------
         artifacts_df : pandas.DataFrame
             DataFrame with columns ``epoch``, ``ch_names``, ``description``,
-            ``onset``, and ``duration``.
+            ``onset``, ``duration``, and ``reason``.  The ``reason`` column
+            is populated only for ``badepoch`` rows and contains a
+            semicolon-separated string of the criterion labels that flagged
+            the epoch (e.g. ``'artifacts;distance'``).
         """
 
-        artifacts_df = pd.DataFrame(columns=['epoch', 'ch_names', 'description', 'onset', 'duration'])  
-        
+        artifacts_df = pd.DataFrame(columns=['epoch', 'ch_names', 'description', 'onset', 'duration', 'reason'])
+
         # BCT
         for ep in np.arange(np.shape(self.artifacts.BCT)[0]):
             for el in np.arange(np.shape(self.artifacts.BCT)[1]):
                     onset, duration = get_onset_and_duration(self.artifacts.BCT[ep, el, :], self.times)
                     if len(onset) > 0:
                         for i in range(len(onset)):
-                            artifacts_df.loc[len(artifacts_df)] = [ep, self.ch_names[el], 'artifact', onset[i], duration[i]]
+                            artifacts_df.loc[len(artifacts_df)] = [ep, self.ch_names[el], 'artifact', onset[i], duration[i], None]
         # BC
         for ep in np.arange(np.shape(self.artifacts.BC)[0]):
             for el in np.arange(np.shape(self.artifacts.BC)[1]):
                     if self.artifacts.BC[ep, el, 0]:
-                        artifacts_df.loc[len(artifacts_df)] = [ep, self.ch_names[el], 'badchannel', None, None]
+                        artifacts_df.loc[len(artifacts_df)] = [ep, self.ch_names[el], 'badchannel', None, None, None]
 
         # BE
         for ep in np.arange(np.shape(self.artifacts.BE)[0]):
             if self.artifacts.BE[ep]:
-                artifacts_df.loc[len(artifacts_df)] = [ep, None, 'badepoch', None, None]
-        
+                reason_str = ';'.join(sorted(self.artifacts.rejection_reasons[ep])) if self.artifacts.rejection_reasons[ep] else ''
+                artifacts_df.loc[len(artifacts_df)] = [ep, None, 'badepoch', None, None, reason_str]
+
         # BT
         for ep in np.arange(np.shape(self.artifacts.BT)[0]):
             onset, duration = get_onset_and_duration(self.artifacts.BT[ep, 0, :], self.times)
             if len(onset) > 0:
                 for i in range(len(onset)):
-                    artifacts_df.loc[len(artifacts_df)] = [ep, None, 'badtime', onset[i], duration[i]]
-        
-        # BCT
+                    artifacts_df.loc[len(artifacts_df)] = [ep, None, 'badtime', onset[i], duration[i], None]
+
+        # CCT
         for ep in np.arange(np.shape(self.artifacts.CCT)[0]):
             for el in np.arange(np.shape(self.artifacts.CCT)[1]):
                     onset, duration = get_onset_and_duration(self.artifacts.CCT[ep, el, :], self.times)
                     if len(onset) > 0:
                         for i in range(len(onset)):
-                            artifacts_df.loc[len(artifacts_df)] = [ep, self.ch_names[el], 'corrected', onset[i], duration[i]]
-        
+                            artifacts_df.loc[len(artifacts_df)] = [ep, self.ch_names[el], 'corrected', onset[i], duration[i], None]
+
         return artifacts_df
 
     def dataframe_to_rejection_matrix(self, artifacts_df):
@@ -915,12 +919,22 @@ class EpochsAPICE(mne.EpochsArray):
             for el, start, end in zip(channel_indices, onset_indices, end_indices):
                 self.artifacts.CCT[ep, el, start:end] = True
         
-        # Set in the rejection matrix the bad epochs
+        # Set in the rejection matrix the bad epochs and restore rejection reasons
+        has_reason_col = 'reason' in artifacts_df.columns
         for ep in np.arange(n_epochs):
-            if len(artifacts_df[(artifacts_df['description'] == 'badepoch') & (artifacts_df['epoch'] == ep)]) > 0:
-                self.artifacts.BE[ep, 0, 0] = True
+            bad_ep_rows = artifacts_df[(artifacts_df['description'] == 'badepoch') & (artifacts_df['epoch'] == ep)]
+            if len(bad_ep_rows) > 0:
+                self.artifacts.BE[ep] = True
+                if has_reason_col:
+                    reason_str = bad_ep_rows['reason'].iloc[0]
+                    if pd.notna(reason_str) and reason_str != '':
+                        self.artifacts.rejection_reasons[ep] = set(reason_str.split(';'))
+                    else:
+                        self.artifacts.rejection_reasons[ep] = {'unknown'}
+                else:
+                    self.artifacts.rejection_reasons[ep] = {'unknown'}
 
-    
+
     def run_algorithms(self, cfg_algorithms):
         """Run configured detection/rejection algorithms on this epochs object.
 
@@ -1074,6 +1088,29 @@ class EpochsAPICE(mne.EpochsArray):
         if lim_gfp:
             self.define_bad_epochs_gfp(lim_gfp=lim_gfp, keeppre=True)
 
+    def _update_rejection_reasons(self, be_vector, reason, keeppre):
+        """Update per-epoch rejection reasons.
+
+        Parameters
+        ----------
+        be_vector : numpy.ndarray
+            Boolean vector of length ``n_epochs``; True = epoch rejected by
+            this criterion.
+        reason : str
+            Label identifying the criterion (e.g. ``'artifacts'``,
+            ``'distance'``, ``'gfp'``).
+        keeppre : bool
+            When False, reset all existing reasons before recording the new
+            ones (consistent with the ``set_be`` overwrite semantics).
+        """
+        n_epochs = len(self.artifacts.rejection_reasons)
+        be_vector = np.reshape(be_vector, n_epochs)
+        if not keeppre:
+            self.artifacts.rejection_reasons = [set() for _ in range(n_epochs)]
+        for ep, flagged in enumerate(be_vector):
+            if flagged:
+                self.artifacts.rejection_reasons[ep].add(reason)
+
     def define_bad_epochs_artifacts(self, bad_data = 1, bad_time = 0, bad_channel = 0.3,
                         tmin=[], tmax=[], keeppre=True):
         """Flag bad epochs using artifact-mask proportions.
@@ -1144,7 +1181,8 @@ class EpochsAPICE(mne.EpochsArray):
         print('    --> BC threshold {:.2f}: {:n} ({:.1%})'.format(thresh[2], np.sum(R[:, 2]), np.sum(R[:, 2]) / n_epochs))
         print('--> Total rejected epochs:             {:n} out of {:n} ({:.1%})'.format(np.sum(self.artifacts.BE[:]), n_epochs, np.sum(self.artifacts.BE[:])/n_epochs))
         print('--> New rejected epochs:               {:n} out of {:n} ({:.1%})'.format(np.sum(be_new), n_epochs, np.sum(be_new)/n_epochs))    
-            
+
+        self._update_rejection_reasons(bad_epochs, 'artifacts', keeppre)
         return bad_epochs
 
     def define_bad_epochs_dist(self, 
@@ -1195,6 +1233,7 @@ class EpochsAPICE(mne.EpochsArray):
             where = [self.times[0], self.times[-1]]
             
         n_electrodes, n_samples, n_epochs = self.get_data_size()
+        be_dist = np.full(n_epochs, False)
         if n_epochs > 1:
             
             epochs_ = self.copy()
@@ -1328,10 +1367,8 @@ class EpochsAPICE(mne.EpochsArray):
                 self.artifacts.update_be(be)
             else:
                 self.artifacts.set_be(be)
-                
-        else:
-            be_dist = np.full(n_epochs, False)
-            
+
+        self._update_rejection_reasons(be_dist, 'distance', keeppre)
         return be_dist
 
 
@@ -1379,6 +1416,7 @@ class EpochsAPICE(mne.EpochsArray):
             where = [self.times[0], self.times[-1]]
             
         n_electrodes, n_samples, n_epochs = self.get_data_size()
+        be_gfp = np.full(n_epochs, False)
         if n_epochs > 1:
             
             epochs_ = self.copy()
@@ -1477,11 +1515,9 @@ class EpochsAPICE(mne.EpochsArray):
                 self.artifacts.update_be(be)
             else:
                 self.artifacts.set_be(be)
-                
-        else:
-            be_gfp = np.full(n_epochs, False)
-            
-        return be_gfp    
+
+        self._update_rejection_reasons(be_gfp, 'gfp', keeppre)
+        return be_gfp
 
 
     def remove_bad_epochs(self):
@@ -1504,6 +1540,10 @@ class EpochsAPICE(mne.EpochsArray):
         self.artifacts.BT = self.artifacts.BT[good_epochs, :, :]
         self.artifacts.BC = self.artifacts.BC[good_epochs, :, :]
         self.artifacts.CCT = self.artifacts.CCT[good_epochs, :, :]
+        self.artifacts.rejection_reasons = [
+            r for ep, r in enumerate(self.artifacts.rejection_reasons)
+            if good_epochs[ep]
+        ]
         
         
 
@@ -1646,3 +1686,96 @@ class EpochsAPICE(mne.EpochsArray):
             Line plot figure.
         """
         return self.artifacts.plot_bad_times_line()
+
+    def plot_rejection_summary(self):
+        """Visualize epoch rejection with per-epoch rejection reasons.
+
+        The figure has two panels:
+
+        - **Top**: bar chart with one bar per epoch, coloured red (rejected)
+          or green (good).  The title shows the total count.
+        - **Bottom**: heatmap matrix where rows are rejection criteria and
+          columns are epochs.  A coloured cell means that criterion flagged
+          the epoch.
+
+        Returns
+        -------
+        fig : matplotlib.figure.Figure
+            Rejection summary figure.
+        """
+        from matplotlib import pyplot as plt
+        from matplotlib.patches import Patch
+
+        reasons_list = self.artifacts.rejection_reasons
+        n_epochs = len(reasons_list)
+
+        all_reasons = sorted(set().union(*reasons_list)) if any(reasons_list) else []
+        is_bad = np.array([bool(r) for r in reasons_list])
+        n_bad = int(np.sum(is_bad))
+
+        n_rows = 2 if all_reasons else 1
+        fig_width = max(10, n_epochs * 0.12)
+        fig, axes = plt.subplots(
+            n_rows, 1,
+            figsize=(fig_width, 3 * n_rows),
+            squeeze=False,
+        )
+
+        # --- top panel: good / bad bar per epoch ---
+        ax0 = axes[0, 0]
+        colors = ['#d62728' if b else '#2ca02c' for b in is_bad]
+        ax0.bar(np.arange(n_epochs), is_bad.astype(int), color=colors, width=1.0, linewidth=0)
+        ax0.set_xlim(-0.5, n_epochs - 0.5)
+        ax0.set_ylim(0, 1.3)
+        ax0.set_yticks([0, 1])
+        ax0.set_yticklabels(['good', 'bad'])
+        ax0.set_xlabel('Epoch index')
+        ax0.set_title(
+            f'Epoch rejection summary  —  {n_bad} / {n_epochs} rejected '
+            f'({n_bad / n_epochs:.1%})'
+        )
+        legend_elements = [
+            Patch(facecolor='#d62728', label=f'Rejected ({n_bad})'),
+            Patch(facecolor='#2ca02c', label=f'Good ({n_epochs - n_bad})'),
+        ]
+        ax0.legend(handles=legend_elements, loc='upper right', fontsize=8)
+
+        # --- bottom panel: reason matrix ---
+        if all_reasons:
+            ax1 = axes[1, 0]
+            reason_colors = plt.cm.tab10(np.linspace(0, 0.9, len(all_reasons)))
+            matrix = np.zeros((len(all_reasons), n_epochs))
+            for ep, ep_reasons in enumerate(reasons_list):
+                for row_idx, r in enumerate(all_reasons):
+                    if r in ep_reasons:
+                        matrix[row_idx, ep] = row_idx + 1
+
+            # grey background for all epochs, colored cells for flagged ones
+            ax1.imshow(
+                is_bad[np.newaxis, :].repeat(len(all_reasons), axis=0),
+                aspect='auto', cmap='Greys', vmin=0, vmax=4,
+                interpolation='none',
+            )
+            for row_idx, r in enumerate(all_reasons):
+                flagged = matrix[row_idx, :] > 0
+                if flagged.any():
+                    ax1.scatter(
+                        np.where(flagged)[0],
+                        np.full(flagged.sum(), row_idx),
+                        marker='s',
+                        s=max(4, 400 / n_epochs),
+                        color=reason_colors[row_idx],
+                        zorder=3,
+                        label=r,
+                    )
+
+            ax1.set_xlim(-0.5, n_epochs - 0.5)
+            ax1.set_ylim(-0.5, len(all_reasons) - 0.5)
+            ax1.set_yticks(range(len(all_reasons)))
+            ax1.set_yticklabels(all_reasons)
+            ax1.set_xlabel('Epoch index')
+            ax1.set_ylabel('Rejection reason')
+            ax1.legend(loc='upper right', fontsize=8, title='Reason')
+
+        plt.tight_layout()
+        return fig

@@ -66,7 +66,7 @@ def load_epochapice(fname):
     # Read the artifacts information from the csv file and add it to the epochs object
     if art_file.is_file():
         artifacts_df = pd.read_csv(art_file)
-        epochs = epochs.dataframe_to_rejection_matrix(artifacts_df)
+        epochs.dataframe_to_rejection_matrix(artifacts_df)
     else:
         print(f"No artifacts file found at {art_file}. Returning epochs without artifacts information.")
     return epochs
