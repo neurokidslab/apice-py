@@ -697,21 +697,6 @@ def preprocess_initial_steps(raw,
 
     # FILTER -----------------------------------------------------------------------------------------------
 
-    # Raw overview and PSD before filtering
-    if report is not None:
-        try:
-            report.add_raw(raw, title="Input Raw Data", psd=True, butterfly=True, replace=True)
-        except Exception as e:
-            print(f"Warning: Could not add raw overview to report: {e}")
-        try:
-            fmax_pre = raw.info['sfreq'] / 2
-            fig_psd_pre = raw.compute_psd(method='welch', fmax=fmax_pre).plot(show=False)
-            report.add_figure(fig_psd_pre, "PSD — Before Filtering",
-                              section="Initial Preprocessing", replace=True)
-            plt.close(fig_psd_pre)
-        except Exception as e:
-            print(f"Warning: Could not add pre-filter PSD to report: {e}")
-
     # High pass filter to remove the slow drifts
     Filter(raw, l_freq=l_freq, h_freq=None, n_jobs=n_jobs)    
 
@@ -719,24 +704,28 @@ def preprocess_initial_steps(raw,
     if line_noise_freq is not None: 
         zap_worker = ZapLine(raw, fline=line_noise_freq, chunk_duration=30, n_jobs=n_jobs)
         raw, zap_fig = zap_worker.apply(raw)
-        if report is not None:
-            try:
-                report.add_figure(zap_fig, "ZapLine Spectral Power",
-                                  section="Initial Preprocessing", replace=True)
-                plt.close(zap_fig)
-            except Exception as e:
-                print(f"Warning: Could not add ZapLine figure to report: {e}")
-    
+        
     # Low pass filter
     Filter(raw, l_freq=None, h_freq=h_freq, n_jobs=n_jobs)
 
-    # PSD after filtering
+
+    # REPORT -----------------------------------------------------------------------------------------------
     if report is not None:
+        try:
+            report.add_raw(raw, title="Preprocess Initial Steps - Output Data", psd=False, butterfly=False, replace=True)
+        except Exception as e:
+            print(f"Warning: Could not add raw overview to report: {e}")
+        try:
+            report.add_figure(zap_fig, "ZapLine Spectral Power",
+                                section="Preprocess Initial Steps - Output Data", replace=True)
+            plt.close(zap_fig)
+        except Exception as e:
+            print(f"Warning: Could not add ZapLine figure to report: {e}")
         try:
             fmax_post = raw.info['sfreq'] / 2
             fig_psd_post = raw.compute_psd(method='welch', fmax=fmax_post).plot(show=False)
             report.add_figure(fig_psd_post, "PSD — After Filtering",
-                              section="Initial Preprocessing", replace=True)
+                              section="Preprocess Initial Steps - Output Data", replace=True)
             plt.close(fig_psd_post)
         except Exception as e:
             print(f"Warning: Could not add post-filter PSD to report: {e}")
@@ -991,7 +980,7 @@ def preprocess_apice_default(raw,
     if report is not None:
         try:
             report.add_raw(raw, 
-                            title="Raw Data", 
+                            title="Preprocess APICE - Raw Data", 
                             psd=False, 
                             butterfly=False, 
                             replace=True, 
@@ -1010,7 +999,7 @@ def preprocess_apice_default(raw,
             exclude = []
         try:
             fig = raw.compute_psd(method='welch',fmax=fmax,exclude=exclude).plot(show=False)
-            report.add_figure(fig, "PSD", section="Raw Data", replace=True)
+            report.add_figure(fig, "PSD", section="Preprocess APICE - Raw Data", replace=True)
         except Exception as e:
             print(f"Warning: Could not add raw PSD to report: {e}")
 
@@ -1018,7 +1007,7 @@ def preprocess_apice_default(raw,
         try:
             events, event_id = mne.events_from_annotations(raw)
             if (len(events) > 0) and (len(events)<30):  # only add events to the report if there are events and if there are not too many events (otherwise the report gets too heavy and does not open properly)
-                report.add_events(events=events, title='Events from "annotations"', sfreq=raw.info['sfreq'], section="Raw Data", replace=True)
+                report.add_events(events=events, title='Events from "annotations"', sfreq=raw.info['sfreq'], section="Preprocess APICE - Raw Data", replace=True)
             else:                
                 print(f"Warning: Not adding events to report because there are {len(events)} events, which is more than the threshold of 30 events.")
         except Exception as e:
@@ -1049,7 +1038,7 @@ def preprocess_apice_default(raw,
     if report is not None:
         try:
             fig = raw.plot_artifact_structure(color_scheme='jet')    
-            report.add_figure(fig, "Artifacts Matrix", section="Raw Data", replace=True)
+            report.add_figure(fig, "Artifacts Matrix", section="Preprocess APICE - Raw Data", replace=True)
         except Exception as e:
             print(f"Warning: Could not add raw artifacts matrix to report: {e}")
 
@@ -1057,7 +1046,7 @@ def preprocess_apice_default(raw,
     if report is not None:
         try:
             fig = raw.plot_percentage_of_bad_data_across_sensors()
-            report.add_figure(fig, "Bad data across electrodes", section="Raw Data", replace=True)
+            report.add_figure(fig, "Bad data across electrodes", section="Preprocess APICE - Raw Data", replace=True)
         except Exception as e:
             print(f"Warning: Could not add raw bad-data topomap to report: {e}")
     
@@ -1078,7 +1067,7 @@ def preprocess_apice_default(raw,
     if report is not None:
         try:
             report.add_raw(raw, 
-                            title="Preprocessed Raw Data", 
+                            title="Preprocess APICE - Preprocessed Data", 
                             psd=False, 
                             butterfly=True, 
                             scalings=50e-6, 
@@ -1099,7 +1088,7 @@ def preprocess_apice_default(raw,
             exclude = []
         try:
             fig = raw.compute_psd(method='welch',fmax=fmax,exclude=exclude).plot(show=False)
-            report.add_figure(fig, "PSD", section="Preprocessed Raw Data", replace=True)
+            report.add_figure(fig, "PSD", section="Preprocess APICE - Preprocessed Data", replace=True)
         except Exception as e:
             print(f"Warning: Could not add preprocessed PSD to report: {e}")
     
@@ -1107,7 +1096,7 @@ def preprocess_apice_default(raw,
     if report is not None:
         try:
             fig = raw.plot_artifact_structure(color_scheme='jet')
-            report.add_figure(fig, "Artifacts Matrix", section="Preprocessed Raw Data", replace=True)
+            report.add_figure(fig, "Artifacts Matrix", section="Preprocess APICE - Preprocessed Data", replace=True)
         except Exception as e:
             print(f"Warning: Could not add preprocessed artifacts matrix to report: {e}")
 
@@ -1115,7 +1104,7 @@ def preprocess_apice_default(raw,
     if report is not None:
         try:
             fig = raw.plot_percentage_of_bad_data_across_sensors()
-            report.add_figure(fig, "Bad data across electrodes", section="Preprocessed Raw Data", replace=True)
+            report.add_figure(fig, "Bad data across electrodes", section="Preprocess APICE - Preprocessed Data", replace=True)
         except Exception as e:
             print(f"Warning: Could not add preprocessed bad-data topomap to report: {e}")
 
@@ -1123,7 +1112,7 @@ def preprocess_apice_default(raw,
     if report is not None:
         try:
             fig = plot_summary(summary.summary_df, metrics = ["%_corrected_data", "%_bad_data", "%_bad_channels", "%_bad_times"])
-            report.add_figure(fig, "Rejected Data Summary", section="Preprocessed Raw Data", replace=True)
+            report.add_figure(fig, "Rejected Data Summary", section="Preprocess APICE - Preprocessed Data", replace=True)
         except Exception as e:
             print(f"Warning: Could not add preprocessed rejected-data summary to report: {e}")
 
