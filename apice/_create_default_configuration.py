@@ -107,7 +107,7 @@ def main():
         json.dump(spline_segments_cgf, f, indent=4) 
 
     spline_channels_cgf = {}
-    spline_channels_cgf['p'] = 0.5
+    spline_channels_cgf['p'] = 0.4
     spline_channels_cgf['p_neighbors'] = 1
     spline_channels_cgf['save_corrected'] = True
     # save to json
@@ -155,7 +155,7 @@ def main():
     }, post_detection=True)
 
 
-    artcfg.add_algorithm_group('bad_channels_power', max_loops=5, min_rejection=min_rejection_thresh_2_0_IQ, define_bcbt=True)
+    artcfg.add_algorithm_group('bad_channels_power', max_loops=5, min_rejection=min_rejection_thresh_3_0_IQ, define_bcbt=True)
     artcfg.add_algorithm('bad_channels_power', 'Power', {
         'bad_data': None,
         'do_reference_data': False,
@@ -292,26 +292,26 @@ def main():
         'remove_bc': True,
     }, algorithm_name='HugeAmplitudeAbsolute')
 
-    artcfg.add_algorithm_group('artifacts_amplitude', max_loops=5, min_rejection=min_rejection_thresh_2_0_IQ, define_bcbt=True)
+    artcfg.add_algorithm_group('artifacts_amplitude', max_loops=5, min_rejection=min_rejection_thresh_3_0_IQ, define_bcbt=True)
     artcfg.add_algorithm('artifacts_amplitude', 'Amplitude', {
         'bad_data': None,
         'do_reference_data': False,
         'do_zscore': False,
         'thresh_type': 'outliers_per_channel',
-        'thresh': [-2, 2],
+        'thresh': [-3, 3],
         'mask': 0,
         'remove_bct': True,
         'remove_bt': True,
         'remove_bc': True,
     }, algorithm_name='ArtifactsAmplitude')
 
-    artcfg.add_algorithm_group('artifacts_maxchange500', max_loops=5, min_rejection=min_rejection_thresh_2_0_IQ, define_bcbt=True)
+    artcfg.add_algorithm_group('artifacts_maxchange500', max_loops=5, min_rejection=min_rejection_thresh_3_0_IQ, define_bcbt=True)
     artcfg.add_algorithm('artifacts_maxchange500', 'MaxChange', {
         'bad_data': None,
         'do_reference_data': False,
         'do_zscore': False,
         'thresh_type': 'outliers_per_channel',
-        'thresh': [None, 2.0],
+        'thresh': [None, 3.0],
         'time_window': 0.500,
         'time_window_step': 0.100,
         'mask': 0,
@@ -320,13 +320,13 @@ def main():
         'remove_bc': True,
     }, algorithm_name='MaxChange500ms')
 
-    artcfg.add_algorithm_group('artifacts_maxchange100', max_loops=5, min_rejection=min_rejection_thresh_2_0_IQ, define_bcbt=True)
+    artcfg.add_algorithm_group('artifacts_maxchange100', max_loops=5, min_rejection=min_rejection_thresh_3_0_IQ, define_bcbt=True)
     artcfg.add_algorithm('artifacts_maxchange100', 'MaxChange', {
         'bad_data': None,
         'do_reference_data': False,
         'do_zscore': False,
         'thresh_type': 'outliers_per_channel',
-        'thresh': [None, 2.0],
+        'thresh': [None, 3.0],
         'time_window': 0.100,
         'time_window_step': 0.020,
         'mask': 0,
@@ -335,13 +335,13 @@ def main():
         'remove_bc': True,
     }, algorithm_name='MaxChange100ms')
 
-    # artcfg.add_algorithm_group('artifacts_runningaverage', max_loops=3, min_rejection=min_rejection_thresh_2_0_IQ, define_bcbt=True)
+    # artcfg.add_algorithm_group('artifacts_runningaverage', max_loops=3, min_rejection=min_rejection_thresh_3_0_IQ, define_bcbt=True)
     # artcfg.add_algorithm('artifacts_runningaverage', 'RunningAverage', {
     #     'bad_data': None,
     #     'do_reference_data': False,
     #     'do_zscore': False,
     #     'thresh_type': 'outliers_per_channel',
-    #     'thresh_fast': [-2, 2],
+    #     'thresh_fast': [-3, 3],
     #     'thresh_diff': [-3, 3],
     #     'mask': 0,
     #     'remove_bct': True,
@@ -361,26 +361,26 @@ def main():
     #     'remove_bc': True,
     # }, algorithm_name='CrossElectrodesOutlier')
 
-    artcfg.add_algorithm_group('artifacts_amplitude_avgref', max_loops=5, min_rejection=min_rejection_thresh_2_0_IQ, define_bcbt=True)
+    artcfg.add_algorithm_group('artifacts_amplitude_avgref', max_loops=5, min_rejection=min_rejection_thresh_3_0_IQ, define_bcbt=True)
     artcfg.add_algorithm('artifacts_amplitude_avgref', 'Amplitude', {
         'bad_data': 'replace by nan',
         'do_reference_data': True,
         'do_zscore': False,
         'thresh_type': 'outliers_all',
-        'thresh': [-2, 2],
+        'thresh': [-3, 3],
         'mask': 0,
         'remove_bct': True,
         'remove_bt': True,
         'remove_bc': True,
     }, algorithm_name='ArtifactsAmplitudeAvgRef')
 
-    artcfg.add_algorithm_group('artifacts_maxchange500_avgref', max_loops=5, min_rejection=min_rejection_thresh_2_0_IQ, define_bcbt=True)
+    artcfg.add_algorithm_group('artifacts_maxchange500_avgref', max_loops=5, min_rejection=min_rejection_thresh_3_0_IQ, define_bcbt=True)
     artcfg.add_algorithm('artifacts_maxchange500_avgref', 'MaxChange', {
         'bad_data': 'replace by nan',
         'do_reference_data': True,
         'do_zscore': False,
         'thresh_type': 'outliers_all',
-        'thresh': [None, 2.0],
+        'thresh': [None, 3.0],
         'time_window': 0.500,
         'time_window_step': 0.100,
         'mask': 0,
@@ -389,13 +389,13 @@ def main():
         'remove_bc': True,
     }, algorithm_name='MaxChange500msAvgRef')
 
-    artcfg.add_algorithm_group('artifacts_maxchange100_avgref', max_loops=5, min_rejection=min_rejection_thresh_2_0_IQ, define_bcbt=True)
+    artcfg.add_algorithm_group('artifacts_maxchange100_avgref', max_loops=5, min_rejection=min_rejection_thresh_3_0_IQ, define_bcbt=True)
     artcfg.add_algorithm('artifacts_maxchange100_avgref', 'MaxChange', {
         'bad_data': 'replace by nan',
         'do_reference_data': True,
         'do_zscore': False,
         'thresh_type': 'outliers_all',
-        'thresh': [None, 2.0],
+        'thresh': [None, 3.0],
         'time_window': 0.100,
         'time_window_step': 0.020,
         'mask': 0,
@@ -404,13 +404,13 @@ def main():
         'remove_bc': True,
     }, algorithm_name='MaxChange100msAvgRef')
 
-    # artcfg.add_algorithm_group('artifacts_runningaverage_avgref', max_loops=3, min_rejection=min_rejection_thresh_2_0_IQ, define_bcbt=True)
+    # artcfg.add_algorithm_group('artifacts_runningaverage_avgref', max_loops=3, min_rejection=min_rejection_thresh_3_0_IQ, define_bcbt=True)
     # artcfg.add_algorithm('artifacts_runningaverage_avgref', 'RunningAverage', {
     #     'bad_data': 'replace by nan',
     #     'do_reference_data': True,
     #     'do_zscore': False,
     #     'thresh_type': 'outliers_all',
-    #     'thresh_fast': [-2, 2],
+    #     'thresh_fast': [-3, 3],
     #     'thresh_diff': [-3, 3],
     #     'mask': 0,
     #     'remove_bct': True,

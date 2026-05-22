@@ -41,3 +41,4 @@ from mne.io import read_raw
 
 from apice.data_structures import RawAPICE, EpochsAPICE
 from apice.pipeline import run_preprocessing, run_segmentation
+from apice.statistics import compute_sme

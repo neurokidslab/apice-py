@@ -50,7 +50,7 @@
         "position": 2,
         "min_loops": 0,
         "max_loops": 5,
-        "min_rejection": 0.089,
+        "min_rejection": 0.00011,
         "define_bcbt": true,
         "algorithms": {
             "PowerHighFreq": {
