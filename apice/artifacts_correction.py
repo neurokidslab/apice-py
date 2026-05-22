@@ -1238,10 +1238,17 @@ class ChannelsSphericalSplineInterpolation(ArtCorrection):
             eeg_copy._data = []
             eeg_copy._times = []
             
+            # Reshape CCT to (n_epochs, n_electrodes, n_samples) for uniform indexing
+            cct_reshaped = np.reshape(raw.artifacts.CCT, (n_epochs, n_electrodes, n_samples), order='F')
+
             # Loop through each epoch to handle bad channels
             for epochIndex in np.arange(n_epochs):
                 # Identify bad channels and interpolate them
                 channelsToInterpolate = ~good_channels[epochIndex][:, :][:,0]
+
+                # Channels fully covered by CCT are unreliable references
+                fully_interpolated_ep = np.all(cct_reshaped[epochIndex], axis=1)
+
                 print('\nEpoch :', epochIndex + 1)
 
                 if np.any(channelsToInterpolate):
@@ -1253,15 +1260,19 @@ class ChannelsSphericalSplineInterpolation(ArtCorrection):
                     eeg_copy._data = eeg_data[epochIndex][:, :]                    
                     eeg_copy._times = raw.times.copy()
 
+                    # all_bad_channels includes CCT-fully-interpolated channels so they are
+                    # excluded from the reference pool of the spline
+                    all_bad_channels_ep = channelsToInterpolate | fully_interpolated_ep
+
                     # Perform spline interpolation
-                    if np.sum(channelsToInterpolate) / n_electrodes <= p:
+                    if np.sum(all_bad_channels_ep) / n_electrodes <= p:
                         interpolated_data, interpolated_channels = _do_spherical_spline_interpolation(eeg_copy, 
                                                                                                 distance_matrix,
                                                                                                 positions,
                                                                                                 adjacency_matrix, 
                                                                                                 p_neighbors, 
                                                                                                 channelsToInterpolate, 
-                                                                                                channelsToInterpolate,
+                                                                                                all_bad_channels_ep,
                                                                                                 True, n_jobs) 
                                                                                               
                         # Store data
@@ -1414,9 +1425,14 @@ class SegmentSphericalSplineInterpolation(ArtCorrection):
             # bad channels in that epoch are not interpolated
             if len(np.shape(raw._data))==2:
                 badChannelsPerEpoch = np.squeeze(raw.artifacts.BC[:,0]) | raw.artifacts.BCmanual
+                # channels fully covered by CCT are unreliable references
+                fully_interpolated_ep = np.all(raw.artifacts.CCT, axis=1)
             elif len(np.shape(raw._data))==3:
                 badChannelsPerEpoch = np.squeeze(raw.artifacts.BC[ep,:,0]) | raw.artifacts.BCmanual
-            
+                # channels fully covered by CCT are unreliable references
+                fully_interpolated_ep = np.all(raw.artifacts.CCT[ep], axis=1)
+            badChannelsPerEpoch |= fully_interpolated_ep
+
             # data to interpolate
             if len(np.shape(raw._data))==2:
                 bct_to_interpolate_ep = bct_to_interpolate
@@ -1585,140 +1601,3 @@ class SegmentSphericalSplineInterpolation(ArtCorrection):
         
         return interpolatedData, interpolationMatrix
     
-
-
-
-
-
-
-
-        # # Initialize a matrix to track interpolated data
-        # interpolationMatrix = np.full((n_epochs, n_channels, n_samples), False)
-
-        # # Copy the original data for processing
-        # interpolatedData = raw._data.copy()
-
-
-        # # Process each epoch separately
-        # for ep in np.arange(n_epochs):
-        #     start_time = time.time()
-
-        #     print('\nInterpolating Epoch ', ep + 1, '...')
-
-        #     # data to interpolate
-        #     bct_to_interpolate_ep = bct_to_interpolate[ep, :, :]
-            
-        #     # bad channels in that epoch are not interpolated
-        #     if len(raw._data.shape) == 2:
-        #         badChannelsPerEpoch = np.squeeze(raw.artifacts.BC[:,0]) | raw.artifacts.BCmanual
-        #     else:
-        #         badChannelsPerEpoch = np.squeeze(raw.artifacts.BC[ep,:,0]) | raw.artifacts.BCmanual
-               
-
-        #     # Initialize arrays for storing segment indices
-        #     initialSegmentIndices = np.empty((1, n_samples))
-        #     initialSegmentIndices[:] = np.nan
-        #     finalSegmentIndices = np.empty((1, n_samples))
-        #     finalSegmentIndices[:] = np.nan
-
-        #     currentSegmentIndex = 0
-
-        #     # Identify the changes in the number of bad channels
-        #     # change_channel = np.where(np.any(np.diff(bct_to_interpolate_ep, axis=1), axis=0))[0]
-        #     # segmentStartIndices = np.unique(np.hstack([change_channel + 1, 0]))
-        #     # segmentEndIndices = np.unique(np.hstack([change_channel, n_samples - 1])) + 1
-        #     # badIntervals = np.asarray([segmentStartIndices.T, segmentEndIndices.T]).T
-
-        #     badIntervals, chaInterpolate = _find_segments_interpolation_spline(bct_to_interpolate_ep, badChannelsPerEpoch)
-        #     # bad = np.where(bad_channels_ep)[0]
-        #     # if np.size(bad)==0:
-        #     #     bad = []
-        #     # else:
-        #     #     bad = list(bad)
-        #     # cha_bad_ep = [bad for i in range(np.shape(bad_if_ep)[0])]
-            
-        #     # Initialize progress bar
-        #     start_time = time.time()
-        #     widgets = ['Interpolating...', Percentage(), Bar()]
-        #     bar = ProgressBar(maxval=int(np.shape(badIntervals)[0] - 1), widgets=widgets)
-        #     bar.start()
-
-        #     # Copy EEG data for processing
-        #     raw_data = raw._data.copy()
-        #     t = raw.times.copy()
-        #     croppedEEGData = raw.copy()
-        #     croppedEEGData._data = []
-        #     croppedEEGData._times = []
-
-        #     # Iterate through each segment for interpolation
-        #     for segmentIndex in np.arange(np.shape(badIntervals)[0]):
-        #         # Check if the segment contains any bad channels to interpolate
-        #         if np.any(bct_to_interpolate[ep, :, np.arange(badIntervals[segmentIndex, 0], badIntervals[segmentIndex, 1])]):
-
-        #             currentSegmentIndex += 1
-
-        #             # Define segment boundaries
-        #             segmentStart = badIntervals[segmentIndex, 0]
-        #             segmentEnd = badIntervals[segmentIndex, 1]
-        #             initialSegmentIndices[ep, currentSegmentIndex - 1] = segmentStart
-        #             finalSegmentIndices[ep, currentSegmentIndex - 1] = segmentEnd
-
-        #             # Determine bad channels in the segment
-        #             bad_channels_to_interpolate = chaInterpolate[segmentIndex]
-        #             all_bad_channels = np.any(bct_to_interpolate[ep, :, np.arange(segmentStart, segmentEnd)], axis=0) | badChannelsPerEpoch
-        #             # bad_channels_to_interpolate = np.any(bct_to_interpolate[ep, :, np.arange(segmentStart, segmentEnd)], axis=0) & ~badChannelsPerEpoch
-
-        #             # Interpolate if there are enough good channels
-        #             if self.params['p']:
-        #                 if np.sum(all_bad_channels) / np.size(all_bad_channels) <= self.params['p']:
-
-        #                     # Get a copy of the segments to interpolate
-        #                     croppedEEGData._data = raw_data[ep, :, np.arange(segmentStart, segmentEnd)] if len(raw._data.shape) == 3 else raw_data[:, np.arange(segmentStart, segmentEnd)]
-        #                     croppedEEGData._times = t[np.arange(segmentStart, segmentEnd)]
-
-        #                     # Perform interpolation
-        #                     interpolated_data, interpolated_bad_channels  = _do_spherical_spline_interpolation(croppedEEGData, 
-        #                                                                                                         distance_matrix,
-        #                                                                                                         positions,
-        #                                                                                                         adjacency_matrix, 
-        #                                                                                                         self.params['p_neighbors'], 
-        #                                                                                                         bad_channels_to_interpolate, 
-        #                                                                                                         all_bad_channels, False, self.params['n_jobs'])
-    
-                            
-        #                     # Store the interpolated data
-        #                     bad_ch = np.where(interpolated_bad_channels)[0]
-        #                     for i in bad_ch:
-        #                         interpolationMatrix[ep][i, np.arange(segmentStart, segmentEnd)] = True
-        #                         interpolatedData[i, np.arange(segmentStart, segmentEnd)] = interpolated_data[i, :]
-
-        #         # Update progress bar
-        #         bar.update(segmentIndex)
-
-        #     # End of interpolation
-        #     bar.finish()
-            
-        #     # Finalize the indices for interpolated segments
-        #     initialSegmentIndices = initialSegmentIndices[~np.isnan(initialSegmentIndices)]
-        #     finalSegmentIndices = finalSegmentIndices[~np.isnan(finalSegmentIndices)]
-
-        #     # Splice the interpolated segments together
-        #     badIntervals = np.asarray([initialSegmentIndices, finalSegmentIndices], dtype=int).T
-        #     epoch_if = np.asarray([0, n_samples - 1])
-        #     if len(raw._data.shape) == 3:
-        #         bct = raw.artifacts.BCT[ep, :, :].copy()
-        #         bt = raw.artifacts.BT[ep, :, :].copy()
-        #         bc = badChannelsPerEpoch
-        #     elif len(raw._data.shape) == 2:
-        #         bct = raw.artifacts.BCT.copy()
-        #         bt = raw.artifacts.BT.copy()
-        #         bc = badChannelsPerEpoch
-        #     interpolatedData = _splice_segments(interpolatedData, badIntervals, epoch_if, bct=bct, bt=bt, bc=bc, method=1)
-
-        #     # Print summary
-        #     print(
-        #         f"--- Elapsed time during interpolation: {time.time() - start_time} seconds\n",
-        #         f"--- Percentage of interpolated data: {np.round(np.sum(interpolationMatrix[ep, :, :]) / (n_channels * n_samples) * 100, 2)} %\n"
-        #     )
-
-        # return interpolatedData, interpolationMatrix
