@@ -1819,6 +1819,6 @@ def plot_summary(summary_df, metrics = ["%_corrected_data", "%_bad_data", "%_bad
     ax.set_ylabel("Percentage")
     ax.set_xlabel("Preprocessing Step")
     ax.legend(title="Metric")
-    ax.set_xticklabels(ax.get_xticklabels(), rotation=45)
+    ax.tick_params(axis='x', rotation=45)
 
     return fig
