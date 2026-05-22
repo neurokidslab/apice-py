@@ -490,7 +490,7 @@ def main():
         'do_reference_data': False,
         'do_zscore': False,
         'thresh_type': 'outliers_per_channel',
-        'thresh': [-3, 3],
+        'thresh': [-4, 4],
         'mask': 0,
         'remove_bct': True,
         'remove_bt': True,

@@ -104,8 +104,8 @@
                     "do_zscore": false,
                     "thresh_type": "outliers_per_channel",
                     "thresh": [
-                        -3,
-                        3
+                        -4,
+                        4
                     ],
                     "mask": 0,
                     "remove_bct": true,
