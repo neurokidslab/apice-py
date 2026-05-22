@@ -25,7 +25,7 @@ def main():
         
     # %% Create a default configuration for defining bad epochs
     bad_epochs_cfg = {}
-    bad_epochs_cfg['bad_data'] = 0.30
+    bad_epochs_cfg['bad_data'] = 1.00
     bad_epochs_cfg['bad_time'] = 0
     bad_epochs_cfg['bad_channel'] = 0.30
     bad_epochs_cfg['lim_dist'] = 2
@@ -36,9 +36,18 @@ def main():
 
 
     # %% Create default configuration for BC and BT definition on epochs
+    # define_bcbt_epoch_cfg = {}
+    # define_bcbt_epoch_cfg['bcbt_method'] = 'fix'
+    # define_bcbt_epoch_cfg['thresh_bad_channels'] = [0.90, 0.70, 0.50, 0.30, 0.10]
+    # define_bcbt_epoch_cfg['thresh_bad_times'] = [0.90, 0.70, 0.50, 0.30, 0.30]
+    # define_bcbt_epoch_cfg['min_good_time'] = 1.000
+    # define_bcbt_epoch_cfg['min_bad_time'] = 0.100
+    # define_bcbt_epoch_cfg['mask_time'] = 0
+    
     define_bcbt_epoch_cfg = {}
-    define_bcbt_epoch_cfg['thresh_bad_channels'] = [0.7, 0.5, 0.05]
-    define_bcbt_epoch_cfg['thresh_bad_times'] = [0.7, 0.5, 0.30]
+    define_bcbt_epoch_cfg['bcbt_method'] = 'functional'
+    define_bcbt_epoch_cfg['thresh_bad_channels'] = 0.10
+    define_bcbt_epoch_cfg['thresh_bad_times'] = 0.30
     define_bcbt_epoch_cfg['min_good_time'] = 1.000
     define_bcbt_epoch_cfg['min_bad_time'] = 0.100
     define_bcbt_epoch_cfg['mask_time'] = 0
@@ -48,9 +57,18 @@ def main():
 
 
     # %% Create default configuration for BC and BT definition
+    # define_bcbt_raw_cfg = {}
+    # define_bcbt_raw_cfg['bcbt_method'] = 'fix'
+    # define_bcbt_raw_cfg['thresh_bad_channels'] = [0.90, 0.70, 0.50, 0.30]
+    # define_bcbt_raw_cfg['thresh_bad_times'] = [0.90, 0.70, 0.50, 0.30]
+    # define_bcbt_raw_cfg['min_good_time'] = 1.000
+    # define_bcbt_raw_cfg['min_bad_time'] = 0.100
+    # define_bcbt_raw_cfg['mask_time'] = 0
+    
     define_bcbt_raw_cfg = {}
-    define_bcbt_raw_cfg['thresh_bad_channels'] = [0.7, 0.5, 0.30]
-    define_bcbt_raw_cfg['thresh_bad_times'] = [0.7, 0.5, 0.3]
+    define_bcbt_raw_cfg['bcbt_method'] = 'functional'
+    define_bcbt_raw_cfg['thresh_bad_channels'] = 0.30
+    define_bcbt_raw_cfg['thresh_bad_times'] = 0.30
     define_bcbt_raw_cfg['min_good_time'] = 1.000
     define_bcbt_raw_cfg['min_bad_time'] = 0.100
     define_bcbt_raw_cfg['mask_time'] = 0
@@ -504,9 +522,18 @@ def main():
     artcfg.save_to_json(Path(__file__).parent / "default_cfg" / 'detect_for_ica_config.json')
 
     # %% Create default configuration for BC and BT definition for ICA
+    # define_bcbt_raw_cfg = {}
+    # define_bcbt_raw_cfg['bcbt_method'] = 'fix'
+    # define_bcbt_raw_cfg['thresh_bad_channels'] = [0.7, 0.5]
+    # define_bcbt_raw_cfg['thresh_bad_times'] = [0.7, 0.5]
+    # define_bcbt_raw_cfg['min_good_time'] = 2.000
+    # define_bcbt_raw_cfg['min_bad_time'] = 0.020
+    # define_bcbt_raw_cfg['mask_time'] = 0.500
+    
     define_bcbt_raw_cfg = {}
-    define_bcbt_raw_cfg['thresh_bad_channels'] = [0.7, 0.5]
-    define_bcbt_raw_cfg['thresh_bad_times'] = [0.7, 0.5]
+    define_bcbt_raw_cfg['bcbt_method'] = 'functional'
+    define_bcbt_raw_cfg['thresh_bad_channels'] = 0.50
+    define_bcbt_raw_cfg['thresh_bad_times'] = 0.50
     define_bcbt_raw_cfg['min_good_time'] = 2.000
     define_bcbt_raw_cfg['min_bad_time'] = 0.020
     define_bcbt_raw_cfg['mask_time'] = 0.500

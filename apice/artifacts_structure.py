@@ -19,7 +19,7 @@ from apice.utils import (get_data_size, include_short_bad_segments, reject_short
 
 # %% FUNCTIONS
 
-def define_bcbt(bct, thresh_bad_times, thresh_bad_channels, bc=None, bt=None, bc_manual=None):
+def define_bcbt_fix(bct, thresh_bad_times, thresh_bad_channels, bc=None, bt=None, bc_manual=None):
     """Infer bad-channel and bad-time masks from bad-channel-time data.
 
     Parameters
@@ -82,36 +82,40 @@ def define_bcbt(bct, thresh_bad_times, thresh_bad_channels, bc=None, bt=None, bc
     bcbt[np.tile(bt, [1, n_channels, 1])] = True
 
     for i in np.arange(n_cycle):
+
+        thresh_bad_times_i = thresh_bad_times[i]
+        thresh_bad_channels_i = thresh_bad_channels[i]
+                
         for ep in np.arange(n_epochs):
             
             bct_ep = bct[ep, :, :].copy()
+            bc_ep = bc[ep, :, :].copy()
+            bt_ep = bt[ep, :, :].copy()
             
-            # Number of bad channels per sample
-            thresh_bad_channels_i = thresh_bad_times[i]
+            # Define bad times based on the proportion of bad channels per sample
+            # Exclude already-bad channels (BC) from both numerator and denominator
             bct_ep_ = bct_ep.copy()
-            bc_ = bc[ep, :, :].copy()
-            bct_ep_[np.tile(bc_, [1, n_samples])] = False
+            bct_ep_[np.tile(bc_ep, [1, n_samples])] = False
             n_bad_channels = np.sum(bct_ep_*1, axis=0)
-            if np.sum(~bc_*1) == 0:
+            if np.sum(~bc_ep*1) == 0:
                 p_bad_channels = np.zeros_like(n_bad_channels)
             else:
-                p_bad_channels = n_bad_channels / np.tile(np.sum(~bc_*1), [1, n_samples])
+                p_bad_channels = n_bad_channels / np.tile(np.sum(~bc_ep*1), [1, n_samples])
 
-            # Number of bad samples per channel
-            thresh_bad_times_i = thresh_bad_channels[i]
+            # Define bad channels based on the proportion of bad times per channel
+            # Exclude already-bad times (BT) from both numerator and denominator
             bct_ep_ = bct_ep.copy()
-            bt_ = bt[ep, :, :].copy()
-            bct_ep_[np.tile(bt_, (n_channels, 1))] = False
+            bct_ep_[np.tile(bt_ep, [n_channels, 1])] = False
             n_bad_samples = np.sum(bct_ep_*1, axis=1)
-            if np.sum(~bt_*1) == 0:
+            if np.sum(~bt_ep*1) == 0:
                 p_bad_samples = np.zeros_like(n_bad_samples)
             else:
-                p_bad_samples = np.divide(n_bad_samples, np.tile(np.sum(~bt_*1), [n_channels]))
+                p_bad_samples = np.divide(n_bad_samples, np.tile(np.sum(~bt_ep*1), [n_channels]))
 
             # Reject bad data
-            bt[ep, :, :] = bt[ep, :, :].copy() | (p_bad_channels > thresh_bad_channels_i)
+            bt[ep, :, :] = bt[ep, :, :].copy() | (p_bad_channels > thresh_bad_times_i)
             bc[ep, :, :] = bc[ep, :, :].copy() | bc_manual[:, np.newaxis]
-            bc[ep, :, :] = bc[ep, :, :].copy() | np.reshape((p_bad_samples > thresh_bad_times_i), [n_channels, 1])
+            bc[ep, :, :] = bc[ep, :, :].copy() | np.reshape((p_bad_samples > thresh_bad_channels_i), [n_channels, 1])
 
         # Test if the definition changes
         bcbt_old = bcbt.copy()
@@ -128,8 +132,141 @@ def define_bcbt(bct, thresh_bad_times, thresh_bad_channels, bc=None, bt=None, bc
     return bc, bt, bcbt
 
 
+def define_bcbt_functional(bct, thresh_bad_times, thresh_bad_channels, bc_manual=None, max_iter=100):
+    """Infer bad-channel and bad-time masks via fixed-point iteration.
 
-def plot_artifact_structure(times, ch_names, bct, bc=None, bt=None, be=None, artifact='all', time_step=50, color_scheme='turbo', figsize=(12, 6), thresh_bad_channels=None, thresh_bad_times=None):
+    This is an alternative to :func:`define_bcbt` that uses a **single
+    threshold** per direction and iterates until the BC and BT masks stop
+    changing (fixed point).  At convergence the following invariants hold
+    by construction:
+
+    * Every channel flagged as bad (BC) has a proportion of bad BCT samples
+      — **among non-BT samples only** — that is strictly greater than
+      ``thresh_bad_channels``.
+    * Every sample flagged as bad (BT) has a proportion of bad BCT channels
+      — **among non-BC (functional) channels only** — that is strictly
+      greater than ``thresh_bad_times``.
+
+    This guarantees that the bar-plot percentages in
+    :func:`plot_artifact_structure` always reach the threshold for every
+    channel marked as BC, and likewise for the line-plot percentages for
+    every sample marked as BT.  The multi-cycle approach in
+    :func:`define_bcbt` does not guarantee this because channels flagged in
+    an early (lenient) cycle may fall below the final (strict) threshold
+    once the full BT has been accumulated.
+
+    The algorithm starts from the least-aggressive state — only forced bad
+    channels in BC, no bad times — so it finds the **minimal** fixed point,
+    i.e. the one that preserves the most data while satisfying the
+    thresholds.
+
+    Parameters
+    ----------
+    bct : numpy.ndarray
+        Bad-channel-time mask with shape ``(n_channels, n_samples)`` for raw
+        data or ``(n_epochs, n_channels, n_samples)`` for epochs.
+    thresh_bad_times : float
+        Proportion of functional (non-BC) channels that must be bad at a
+        given sample for that sample to be marked as BT.
+    thresh_bad_channels : float
+        Proportion of functional (non-BT) samples that must be bad for a
+        given channel for that channel to be marked as BC.
+    bc_manual : numpy.ndarray | None, default=None
+        Boolean array of shape ``(n_channels,)`` with manually forced bad
+        channels.  These are always included in BC regardless of the
+        threshold.
+    max_iter : int, default=100
+        Maximum number of alternating-update iterations.
+
+    Returns
+    -------
+    bc : numpy.ndarray
+        Bad-channel mask.
+    bt : numpy.ndarray
+        Bad-time mask.
+    bcbt : numpy.ndarray
+        Combined bad-data mask derived from ``bc`` and ``bt``.
+    """
+
+    # ---- normalise to 3-D (n_epochs, n_channels, n_samples) ---------------
+    bct = np.asarray(bct, dtype=bool)
+    if bct.ndim == 2:
+        bct3 = bct[np.newaxis, :, :]
+        dimension_added = True
+    else:
+        bct3 = bct
+        dimension_added = False
+
+    n_epochs, n_channels, n_samples = bct3.shape
+
+    if bc_manual is None:
+        bc_manual = np.zeros(n_channels, dtype=bool)
+    else:
+        bc_manual = np.asarray(bc_manual, dtype=bool)
+
+    # ---- initialise: only forced bad channels, no bad times ---------------
+    bc = np.zeros((n_epochs, n_channels, 1), dtype=bool)
+    bt = np.zeros((n_epochs, 1, n_samples), dtype=bool)
+    for ep in range(n_epochs):
+        bc[ep, :, 0] = bc_manual
+
+    # ---- alternating fixed-point iteration --------------------------------
+    for iteration in range(max_iter):
+        bc_old = bc.copy()
+        bt_old = bt.copy()
+
+        for ep in range(n_epochs):
+            bct_ep = bct3[ep]           # (n_channels, n_samples)
+            bc_ep  = bc[ep, :, 0]       # (n_channels,)
+
+            # Update BT: among functional (non-BC) channels, what fraction
+            # is bad at each sample?
+            good_ch  = ~bc_ep
+            n_good_ch = int(good_ch.sum())
+            if n_good_ch > 0:
+                p_bad_per_t = bct_ep[good_ch, :].sum(axis=0) / n_good_ch
+            else:
+                p_bad_per_t = np.zeros(n_samples)
+            bt[ep, 0, :] = p_bad_per_t > thresh_bad_times
+
+            # Update BC: among functional (non-BT) samples, what fraction
+            # is bad for each channel?
+            bt_ep_new = bt[ep, 0, :]    # use the BT just updated above
+            good_t    = ~bt_ep_new
+            n_good_t  = int(good_t.sum())
+            if n_good_t > 0:
+                p_bad_per_ch = bct_ep[:, good_t].sum(axis=1) / n_good_t
+            else:
+                p_bad_per_ch = np.zeros(n_channels)
+            bc[ep, :, 0] = bc_manual | (p_bad_per_ch > thresh_bad_channels)
+
+        # ---- convergence check -------------------------------------------
+        bc_changed = int(np.sum(bc != bc_old))
+        bt_changed = int(np.sum(bt != bt_old))
+        print(f'Iteration {iteration + 1}: BC changed {bc_changed} channel(s), '
+              f'BT changed {bt_changed} sample(s)')
+        if bc_changed == 0 and bt_changed == 0:
+            print(f'Converged after {iteration + 1} iteration(s).')
+            break
+    else:
+        print(f'Warning: did not fully converge after {max_iter} iterations.')
+
+    # ---- build combined mask ----------------------------------------------
+    bcbt = np.zeros((n_epochs, n_channels, n_samples), dtype=bool)
+    bcbt |= np.tile(bc, [1, 1, n_samples])
+    bcbt |= np.tile(bt, [1, n_channels, 1])
+
+    # ---- restore 2-D if input was 2-D -------------------------------------
+    if dimension_added:
+        bt   = bt[0]    # (1, n_samples)
+        bc   = bc[0]    # (n_channels, 1)
+        bcbt = bcbt[0]  # (n_channels, n_samples)
+
+    return bc, bt, bcbt
+
+
+def plot_artifact_structure(times, ch_names, bct, bc=None, bt=None, be=None, artifact='all', 
+                            time_step=50, color_scheme='turbo', figsize=(12, 6), thresh_bad_channels=None, thresh_bad_times=None):
     """Plot artifact masks over channels and time/epochs.
 
     Parameters
@@ -154,6 +291,10 @@ def plot_artifact_structure(times, ch_names, bct, bc=None, bt=None, be=None, art
         Matplotlib colormap name.
     figsize : tuple, default=(12, 6)
         Figure size in inches.
+    thresh_bad_channels : float | None, default=None
+        Threshold for bad channels.
+    thresh_bad_times : float | None, default=None
+        Threshold for bad times.
 
     Returns
     -------
@@ -286,6 +427,15 @@ def plot_artifact_structure(times, ch_names, bct, bc=None, bt=None, be=None, art
         good_time_mask = ~bt_p[:, 0, :].astype(bool)  # (n_epochs, n_samples)
     else:
         good_time_mask = np.ones((n_epochs, n_samples), dtype=bool)
+
+    if be is not None:
+        be_p = np.asarray(be)
+        if be_p.ndim == 1:  # (n_epochs,)
+            be_p = be_p[:, np.newaxis]
+        elif be_p.ndim == 3:  # (n_epochs, 1, 1)
+            be_p = be_p[:, 0, :]
+        bad_epoch_mask = be_p[:, 0].astype(bool)  # (n_epochs,)
+        good_time_mask[bad_epoch_mask, :] = False
 
     n_good_times = int(good_time_mask.sum())
     pct_channels = np.array([
@@ -423,11 +573,44 @@ class Artifacts:
         Minimum bad segment duration in seconds.
     mask_time : float, default=0
         Buffer duration in seconds applied around bad segments.
+    bcbt_method : {'functional', 'fix'}, default='functional'
+        Algorithm used to derive BC and BT from BCT.
+        ``'functional'`` uses :func:`define_bcbt_functional` (fixed-point
+        iteration, single threshold, guaranteed consistency at convergence).
+        ``'fix'`` uses :func:`define_bcbt_fix` (multi-cycle progressive
+        thresholds).
     """
 
     def __init__(self, obj, 
-                 thresh_bad_channels=[0.7, 0.5, 0.3], thresh_bad_times=[0.7, 0.5, 0.3], 
-                 min_good_time=0, min_bad_time=0, mask_time=0):
+                 thresh_bad_channels=0.30, thresh_bad_times=0.30, 
+                 min_good_time=0, min_bad_time=0, mask_time=0, bcbt_method='functional'):
+
+        if bcbt_method not in ('functional', 'fix'):
+            raise ValueError(
+                f"bcbt_method must be 'functional' or 'fix', got {bcbt_method!r}."
+            )
+
+        if bcbt_method == 'functional':
+            for name, val in (('thresh_bad_channels', thresh_bad_channels),
+                              ('thresh_bad_times', thresh_bad_times)):
+                if not np.isscalar(val):
+                    raise ValueError(
+                        f"When bcbt_method='functional', {name} must be a single float "
+                        f"(e.g. 0.3), got {val!r}."
+                    )
+        else:  # 'fix'
+            for name, val in (('thresh_bad_channels', thresh_bad_channels),
+                              ('thresh_bad_times', thresh_bad_times)):
+                if np.isscalar(val) or len(val) < 1:
+                    raise ValueError(
+                        f"When bcbt_method='fix', {name} must be a non-empty list of "
+                        f"thresholds (e.g. [0.7, 0.5, 0.3]), got {val!r}."
+                    )
+                if any(val[i] <= val[i + 1] for i in range(len(val) - 1)):
+                    raise ValueError(
+                        f"When bcbt_method='fix', {name} must be strictly decreasing "
+                        f"(e.g. [0.7, 0.5, 0.3]), got {list(val)!r}."
+                    )
 
         base_epochs_type = getattr(mne, "BaseEpochs", mne.epochs.BaseEpochs)
         if not isinstance(obj, (mne.io.BaseRaw, base_epochs_type)):
@@ -461,7 +644,8 @@ class Artifacts:
             elif isinstance(obj, base_epochs_type):
                 self.object_type = 'epochs'
             self.params = dict(thresh_bad_channels=thresh_bad_channels, thresh_bad_times=thresh_bad_times,
-                               min_good_time=min_good_time, min_bad_time=min_bad_time, mask_time=mask_time)
+                               min_good_time=min_good_time, min_bad_time=min_bad_time, mask_time=mask_time,
+                               bcbt_method=bcbt_method)
             self.n_epochs = n_epochs
             self.n_channels = n_channels
             self.n_samples = n_samples
@@ -539,6 +723,11 @@ class Artifacts:
     def copy(self):
         """Return a deep copy of the artifacts object and all rejection matrices."""
         return copy.deepcopy(self)
+
+    def _thresh(self, key):
+        """Return the scalar threshold for *key*, whether stored as float or list."""
+        val = self.params[key]
+        return val if np.isscalar(val) else val[-1]
 
     
 class ArtifactsRaw(Artifacts):
@@ -718,17 +907,31 @@ class ArtifactsRaw(Artifacts):
         
         print('Identifying bad samples and channels...')
 
-       # Reject
-        if keep_rejected_previous=='bt':
-            bt_pre = self.BT==1
+        # Select algorithm and compute BC/BT
+        method = self.params.get('bcbt_method', 'functional')
+        if method == 'functional':
+            bc, bt, _ = define_bcbt_functional(
+                self.BCT,
+                self.params['thresh_bad_times'],
+                self.params['thresh_bad_channels'],
+                bc_manual=self.BCmanual,
+            )
         else:
-            bt_pre = None
-        if keep_rejected_previous=='bc':
-            bc_pre = self.BC==1
-        else:
-            bc_pre = None
-        bc, bt, _ = define_bcbt(self.BCT, self.params['thresh_bad_times'], self.params['thresh_bad_channels'], bt=bt_pre, bc=bc_pre, bc_manual=self.BCmanual)
-                
+            if keep_rejected_previous == 'bt':
+                bt_pre = self.BT == 1
+            else:
+                bt_pre = None
+            if keep_rejected_previous == 'bc':
+                bc_pre = self.BC == 1
+            else:
+                bc_pre = None
+            bc, bt, _ = define_bcbt_fix(
+                self.BCT,
+                self.params['thresh_bad_times'],
+                self.params['thresh_bad_channels'],
+                bt=bt_pre, bc=bc_pre, bc_manual=self.BCmanual,
+            )
+
         # Remove too short artifacts
         samples_limit = int(np.round(self.params['min_bad_time']*self.sfreq))
         bt, _ = include_short_bad_segments(bt, samples_limit, axis=1)
@@ -788,10 +991,11 @@ class ArtifactsRaw(Artifacts):
         bct = bct[np.newaxis, :, :]  # Add an epoch dimension for compatibility with the plotting function
         bc = bc[np.newaxis, :, :]  # Add an epoch dimension for compatibility with the plotting function
         bt = bt[np.newaxis, :, :]  # Add an epoch dimension for compatibility with the plotting function
+
         return plot_artifact_structure(self.times, self.ch_names, bct, bc=bc, bt=bt, be=None,
                        artifact=artifact, time_step=time_step, color_scheme=color_scheme,
-                       thresh_bad_channels=self.params['thresh_bad_channels'][-1],
-                       thresh_bad_times=self.params['thresh_bad_times'][-1])
+                       thresh_bad_channels=self._thresh('thresh_bad_channels'),
+                       thresh_bad_times=self._thresh('thresh_bad_times'))
 
     def plot_bad_channels_bar(self):
         """Bar plot of bad-data percentage per channel, excluding bad-time samples.
@@ -819,7 +1023,7 @@ class ArtifactsRaw(Artifacts):
 
         fig, ax = plt.subplots(figsize=(max(8, self.n_channels * 0.15), 4))
         ax.bar(np.arange(self.n_channels), pct, color='steelblue', width=0.8)
-        thresh = self.params['thresh_bad_channels'][-1] * 100
+        thresh = self._thresh('thresh_bad_channels') * 100
         ax.axhline(thresh, color='red', linestyle='--', linewidth=1.2,
                    label=f'Threshold ({thresh:.0f}%)')
         ax.set_xticks(np.arange(self.n_channels))
@@ -858,7 +1062,7 @@ class ArtifactsRaw(Artifacts):
         fig, ax = plt.subplots(figsize=(12, 4))
         ax.plot(self.times, pct, color='steelblue', linewidth=0.8)
         ax.fill_between(self.times, pct, alpha=0.3, color='steelblue')
-        thresh = self.params['thresh_bad_times'][-1] * 100
+        thresh = self._thresh('thresh_bad_times') * 100
         ax.axhline(thresh, color='red', linestyle='--', linewidth=1.2,
                    label=f'Threshold ({thresh:.0f}%)')
         ax.set_xlabel('Time (s)')
@@ -1003,20 +1207,31 @@ class ArtifactsEpochs(Artifacts):
         
         print('Identifying bad samples and channels...')
 
-        # take the rejection matrix to define BC and BT
-        bct = self.BCT.copy()
-            
-        # Reject
-        if keep_rejected_previous=='bt':
-            bt_pre = self.BT==1
+        # Select algorithm and compute BC/BT
+        method = self.params.get('bcbt_method', 'functional')
+        if method == 'functional':
+            bc, bt, _ = define_bcbt_functional(
+                self.BCT,
+                self.params['thresh_bad_times'],
+                self.params['thresh_bad_channels'],
+                bc_manual=self.BCmanual,
+            )
         else:
-            bt_pre = None
-        if keep_rejected_previous=='bc':
-            bc_pre = self.BC==1
-        else:
-            bc_pre = None
-        bc, bt, _ = define_bcbt(self.BCT, self.params['thresh_bad_times'], self.params['thresh_bad_channels'], bt=bt_pre, bc=bc_pre, bc_manual=self.BCmanual)
-        
+            if keep_rejected_previous == 'bt':
+                bt_pre = self.BT == 1
+            else:
+                bt_pre = None
+            if keep_rejected_previous == 'bc':
+                bc_pre = self.BC == 1
+            else:
+                bc_pre = None
+            bc, bt, _ = define_bcbt_fix(
+                self.BCT,
+                self.params['thresh_bad_times'],
+                self.params['thresh_bad_channels'],
+                bt=bt_pre, bc=bc_pre, bc_manual=self.BCmanual,
+            )
+
         for ep in range(self.n_epochs): 
             bt_ep = bt[ep,0,:]
             bt_ep = np.reshape(bt_ep, np.size(bt_ep))
@@ -1078,8 +1293,8 @@ class ArtifactsEpochs(Artifacts):
         
         return plot_artifact_structure(self.times, self.ch_names, self.BCT, bc=self.BC, bt=self.BT, be=self.BE,
                        artifact=artifact, time_step=time_step, color_scheme=color_scheme,
-                       thresh_bad_channels=self.params['thresh_bad_channels'][-1],
-                       thresh_bad_times=self.params['thresh_bad_times'][-1])
+                       thresh_bad_channels=self._thresh('thresh_bad_channels'),
+                       thresh_bad_times=self._thresh('thresh_bad_times'))
 
     def plot_bad_channels_bar(self):
         """Bar plot of bad-data percentage per channel, excluding bad-time samples.
@@ -1106,7 +1321,7 @@ class ArtifactsEpochs(Artifacts):
 
         fig, ax = plt.subplots(figsize=(max(8, self.n_channels * 0.15), 4))
         ax.bar(np.arange(self.n_channels), pct, color='steelblue', width=0.8)
-        thresh = self.params['thresh_bad_channels'][-1] * 100
+        thresh = self._thresh('thresh_bad_channels') * 100
         ax.axhline(thresh, color='red', linestyle='--', linewidth=1.2,
                    label=f'Threshold ({thresh:.0f}%)')
         ax.set_xticks(np.arange(self.n_channels))
@@ -1155,7 +1370,7 @@ class ArtifactsEpochs(Artifacts):
         for ep in range(1, self.n_epochs):
             ax.axvline(ep * self.n_samples, color='gray', linestyle=':', linewidth=0.8)
 
-        thresh = self.params['thresh_bad_times'][-1] * 100
+        thresh = self._thresh('thresh_bad_times') * 100
         ax.axhline(thresh, color='red', linestyle='--', linewidth=1.2,
                    label=f'Threshold ({thresh:.0f}%)')
 

@@ -1,12 +1,7 @@
 {
-    "thresh_bad_channels": [
-        0.7,
-        0.5
-    ],
-    "thresh_bad_times": [
-        0.7,
-        0.5
-    ],
+    "bcbt_method": "functional",
+    "thresh_bad_channels": 0.5,
+    "thresh_bad_times": 0.5,
     "min_good_time": 2.0,
     "min_bad_time": 0.02,
     "mask_time": 0.5
