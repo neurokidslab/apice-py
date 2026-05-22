@@ -1283,13 +1283,12 @@ class ChannelsSphericalSplineInterpolation(ArtCorrection):
                                 raw._data[epochIndex][badElectrodeIndex, :] = interpolated_data[badElectrodeIndex, :]
                             interpolation_matrix[epochIndex][badElectrodeIndex, :] = True
 
-                        if np.all(interpolated_channels == channelsToInterpolate):
+                        if np.all(interpolated_channels[channelsToInterpolate]):
                             print('--- All bad channels were interpolated.')
                             print(
                                   f"--- Elapsed time during whole channel interpolation: {time.time() - start_time} seconds\n"
                             )
-                        elif np.any(np.where(interpolated_channels)[0] == np.where(channelsToInterpolate)[0]) and not np.all(
-                                interpolated_channels == channelsToInterpolate):
+                        elif np.any(interpolated_channels[channelsToInterpolate]):
                             print('--- Some channels were interpolated.')
                             print(
                                   f"--- Elapsed time during whole channel interpolation: {time.time() - start_time} seconds\n"
