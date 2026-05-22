@@ -1037,16 +1037,21 @@ def preprocess_apice_default(raw,
     # Create a figure to visualize the artifact structure
     if report is not None:
         try:
-            fig = raw.plot_artifact_structure(color_scheme='jet')    
-            report.add_figure(fig, "Artifacts Matrix", section="Preprocess APICE - Raw Data", replace=True)
+            fig_bct = raw.plot_artifact_structure(color_scheme='jet', artifact='BCT')    
+            report.add_figure(fig_bct, "Artifacts Matrix (BCT)", section="Preprocess APICE - Raw Data", replace=True)
+        except Exception as e:
+            print(f"Warning: Could not add raw artifacts matrix to report: {e}")
+        try:
+            fig_all = raw.plot_artifact_structure(color_scheme='jet', artifact='all')    
+            report.add_figure(fig_all, "Artifacts Matrix (All)", section="Preprocess APICE - Raw Data", replace=True)
         except Exception as e:
             print(f"Warning: Could not add raw artifacts matrix to report: {e}")
 
     # Add topomap of bad electrodes
     if report is not None:
         try:
-            fig = raw.plot_percentage_of_bad_data_across_sensors()
-            report.add_figure(fig, "Bad data across electrodes", section="Preprocess APICE - Raw Data", replace=True)
+            fig_bad = raw.plot_percentage_of_bad_data_across_sensors()
+            report.add_figure(fig_bad, "Bad data across electrodes", section="Preprocess APICE - Raw Data", replace=True)
         except Exception as e:
             print(f"Warning: Could not add raw bad-data topomap to report: {e}")
     
@@ -1095,10 +1100,15 @@ def preprocess_apice_default(raw,
     # Create a figure to visualize the artifact structure
     if report is not None:
         try:
-            fig = raw.plot_artifact_structure(color_scheme='jet')
-            report.add_figure(fig, "Artifacts Matrix", section="Preprocess APICE - Preprocessed Data", replace=True)
+            fig_bct = raw.plot_artifact_structure(color_scheme='jet', artifact='BCT')    
+            report.add_figure(fig_bct, "Artifacts Matrix (BCT)", section="Preprocess APICE - Preprocessed Data", replace=True)
         except Exception as e:
-            print(f"Warning: Could not add preprocessed artifacts matrix to report: {e}")
+            print(f"Warning: Could not add raw artifacts matrix to report: {e}")
+        try:
+            fig_all = raw.plot_artifact_structure(color_scheme='jet', artifact='all')    
+            report.add_figure(fig_all, "Artifacts Matrix (All)", section="Preprocess APICE - Preprocessed Data", replace=True)
+        except Exception as e:
+            print(f"Warning: Could not add raw artifacts matrix to report: {e}")
 
     # Add topomap of bad electrodes
     if report is not None:
