@@ -1520,8 +1520,17 @@ class EpochsAPICE(mne.EpochsArray):
         return be_gfp
 
 
-    def remove_bad_epochs(self):
+    def remove_bad_epochs(self, reasons=None):
         """Drop bad epochs and synchronize artifact matrices.
+
+        Parameters
+        ----------
+        reasons : str | list of str | None, default=None
+            If ``None``, remove all epochs flagged as bad (``BE == True``).
+            Otherwise, remove only epochs whose rejection reasons include at
+            least one of the specified labels (e.g. ``'artifacts'``,
+            ``'distance'``, ``'gfp'``).  Epochs not matching the filter are
+            left untouched even if ``BE`` is True.
 
         Returns
         -------
@@ -1529,11 +1538,23 @@ class EpochsAPICE(mne.EpochsArray):
             Removes rows corresponding to rejected epochs from data and masks.
         """
 
-        # Drop the bad epochs from the epochs dat
-        self.drop(self.artifacts.BE, reason='bad epoch')
+        if reasons is None:
+            # Remove all bad epochs
+            to_drop = self.artifacts.BE.copy()
+        else:
+            if isinstance(reasons, str):
+                reasons = [reasons]
+            reasons = set(reasons)
+            to_drop = np.array([
+                bool(r & reasons)
+                for r in self.artifacts.rejection_reasons
+            ])
 
-        # Update the artifacts matrices to reflect the removal of bad epochs
-        good_epochs = ~self.artifacts.BE
+        # Drop the selected epochs from the epochs data
+        self.drop(to_drop, reason='bad epoch')
+
+        # Update the artifacts matrices to reflect the removal of the dropped epochs
+        good_epochs = ~to_drop
         self.artifacts.n_epochs = np.sum(good_epochs)
         self.artifacts.BE = self.artifacts.BE[good_epochs]
         self.artifacts.BCT = self.artifacts.BCT[good_epochs, :, :]
