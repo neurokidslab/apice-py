@@ -21,8 +21,7 @@ from apice.standard_conf import (
     cfg_detect_power,
     cfg_detect_artifacts_huge,
     cfg_detect_artifacts_glitches,
-    cfg_detect_artifacts_all,
-    cfg_detect_for_ica,
+    cfg_detect_artifacts_motion,
 )
 
 
@@ -57,8 +56,8 @@ def main():
     with open(filename, 'w') as f:
         json.dump(artcfg.cfg, f, indent=4)
 
-    # artifacts detection - all
-    cfg_detect_artifacts_all(filename=cfg_dir / 'detect_artifacts_all_config.json')
+    # artifacts detection - motion
+    cfg_detect_artifacts_motion(filename=cfg_dir / 'detect_artifacts_motion_config.json')
 
 
     # define BC and BT for raw and epochs

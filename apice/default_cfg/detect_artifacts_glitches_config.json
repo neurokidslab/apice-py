@@ -71,19 +71,35 @@
                 },
                 "post_detection": false
             },
-            "ShortGoodSegments_3": {
+            "ShortBadSegments_3": {
                 "position": 3,
-                "class_name": "ShortGoodSegments",
+                "class_name": "ShortBadSegments",
                 "parameters": {
-                    "time_limit": 1.0
+                    "time_limit": 0.1
                 },
                 "post_detection": true
             },
-            "Mask_4": {
+            "ShortGoodSegments_4": {
                 "position": 4,
+                "class_name": "ShortGoodSegments",
+                "parameters": {
+                    "time_limit": 0.5
+                },
+                "post_detection": true
+            },
+            "Mask_5": {
+                "position": 5,
                 "class_name": "Mask",
                 "parameters": {
-                    "mask_length": 0.5
+                    "mask_length": 0.2
+                },
+                "post_detection": true
+            },
+            "ShortGoodSegments_6": {
+                "position": 6,
+                "class_name": "ShortGoodSegments",
+                "parameters": {
+                    "time_limit": 0.5
                 },
                 "post_detection": true
             }

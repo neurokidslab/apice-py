@@ -54,7 +54,12 @@ def min_rejection_from_thresh(thresh):
         t_u = Q3 + thresh[1] * IQR
         min_rej += norm.sf(t_u)       # P(Z > t_u)
 
-    return min_rej * 100              # convert to percent
+    result = min_rej * 100            # convert to percent
+    if result == 0.0:
+        return 0.0
+    import math
+    ndigits = -int(math.floor(math.log10(result))) + 1   # 2 significant figures
+    return round(result, ndigits)
 
 
 def cfg_bad_epochs(bad_data=1.00, bad_time=0, bad_channel=0.30, lim_dist=2, lim_gfp=2, filename=None):
@@ -363,7 +368,7 @@ def cfg_detect_artifacts_glitches(rejection_level=2, min_rejection=0, max_loops=
     return artcfg_glitches.cfg
 
 
-def cfg_detect_artifacts_all(rejection_level=3, min_rejection=None, max_loops=5, abs_thresh_amp = 1000 * 1e-6, filename=None):
+def cfg_detect_artifacts_motion(rejection_level=3, min_rejection=None, max_loops=5, abs_thresh_amp = 1000 * 1e-6, filename=None):
     thresh_sym      = [-rejection_level, rejection_level]   # both tails
     thresh_upper    = [None, rejection_level]               # upper tail only
     min_rej_sym     = min_rejection if min_rejection is not None else min_rejection_from_thresh(thresh_sym)

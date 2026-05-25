@@ -910,7 +910,7 @@ def preprocess_apice_default(raw,
     cfg_bad_channels_detection = get_cfg(cfg_bad_channels_detection, 'detect_bad_channels_config.json')
     cfg_glitches_detection = get_cfg(cfg_glitches_detection, 'detect_artifacts_glitches_config.json')
     cfg_target_pca = get_cfg(cfg_target_pca, 'correction_target_pca_config.json')
-    cfg_artifacts_detection = get_cfg(cfg_artifacts_detection, 'detect_artifacts_all_config.json')
+    cfg_artifacts_detection = get_cfg(cfg_artifacts_detection, 'detect_artifacts_motion_config.json')
     cfg_spline_segments = get_cfg(cfg_spline_segments, 'correction_spline_segments_config.json')
     cfg_spline_channels = get_cfg(cfg_spline_channels, 'correction_spline_channels_config.json')    
     
