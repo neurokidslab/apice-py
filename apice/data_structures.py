@@ -297,10 +297,14 @@ class RawAPICE(mne.io.RawArray):
 
         # Get time vector and channel list from the raw data structure
         t = self.times
+        dt = np.mean(np.diff(t))  # sample period in seconds
         ch_names = np.asarray(self.info['ch_names'])
 
         # Get data size information from the custom Raw object
         n_channels, n_samples, n_epochs = self.get_data_size()
+
+        # Build channel-name → index map once
+        ch_idx_map = {ch: i for i, ch in enumerate(ch_names)}
 
         # Create a rejection matrix for bad channels (BC)
         # Get indices of bad channels and ensure they are integers
@@ -311,42 +315,29 @@ class RawAPICE(mne.io.RawArray):
 
         # Create a rejection matrix for bad times (BT)
         bad_time = annotations_df[annotations_df['description'] == bt_label].reset_index(drop=True)
-
-        # Vectorize search for nearest indices
-        onset_indices = np.searchsorted(t, bad_time['onset'])
-        end_indices = np.searchsorted(t, bad_time['onset'] + bad_time['duration'])
-
-        # Efficiently apply the artifacts mask
-        for start, end in zip(onset_indices, end_indices):
-            self.artifacts.BT[0, start:end] = True
+        if len(bad_time) > 0:
+            onset_indices = np.round((bad_time['onset'].values - t[0]) / dt).astype(int)
+            end_indices = np.round((bad_time['onset'].values + bad_time['duration'].values - t[0]) / dt).astype(int)
+            for start, end in zip(onset_indices, end_indices):
+                self.artifacts.BT[0, start:end] = True
 
         # Create a rejection matrix for bad data (BCT)
         bad_data = annotations_df[annotations_df['description'] == bct_label].reset_index(drop=True)
-
-        # Vectorized search for nearest indices
-        onset_indices = np.searchsorted(t, bad_data['onset'])
-        end_indices = np.searchsorted(t, bad_data['onset'] + bad_data['duration'])
-
-        # Precompute channel indices
-        channel_indices = np.array([np.where(ch_names == ch)[0][0] for ch in bad_data['ch_names']])
-
-        # Efficiently apply the artifacts mask
-        for el, start, end in zip(channel_indices, onset_indices, end_indices):
-            self.artifacts.BCT[el, start:end] = True  
+        if len(bad_data) > 0:
+            onset_indices = np.round((bad_data['onset'].values - t[0]) / dt).astype(int)
+            end_indices = np.round((bad_data['onset'].values + bad_data['duration'].values - t[0]) / dt).astype(int)
+            channel_indices = np.array([ch_idx_map[ch[0] if isinstance(ch, (list, tuple)) else ch] for ch in bad_data['ch_names']])
+            for el, start, end in zip(channel_indices, onset_indices, end_indices):
+                self.artifacts.BCT[el, start:end] = True
 
         # Create a rejection matrix for corrected data (CCT)
         corrected_data = annotations_df[annotations_df['description'] == cct_label].reset_index(drop=True)
-
-        # Vectorized search for nearest indices
-        onset_indices = np.searchsorted(t, corrected_data['onset'])
-        end_indices = np.searchsorted(t, corrected_data['onset'] + corrected_data['duration'])
-
-        # Precompute channel indices
-        channel_indices = np.array([np.where(ch_names == ch)[0][0] for ch in corrected_data['ch_names']])
-
-        # Efficiently apply the corrected artifacts mask
-        for el, start, end in zip(channel_indices, onset_indices, end_indices):
-            self.artifacts.CCT[el, start:end] = True 
+        if len(corrected_data) > 0:
+            onset_indices = np.round((corrected_data['onset'].values - t[0]) / dt).astype(int)
+            end_indices = np.round((corrected_data['onset'].values + corrected_data['duration'].values - t[0]) / dt).astype(int)
+            channel_indices = np.array([ch_idx_map[ch[0] if isinstance(ch, (list, tuple)) else ch] for ch in corrected_data['ch_names']])
+            for el, start, end in zip(channel_indices, onset_indices, end_indices):
+                self.artifacts.CCT[el, start:end] = True
 
     def remove_artifacts_annotations(self, bt_label='badtime', bct_label='artifact', cct_label='corrected') -> None:
         """Remove artifact-related annotations from the raw object.
@@ -982,57 +973,68 @@ class EpochsAPICE(mne.EpochsArray):
 
         # Get time vector and channel list from the raw data structure
         t = self.times
+        dt = np.mean(np.diff(t))  # sample period in seconds
         ch_names = np.asarray(self.ch_names)
 
         # Get data size information from the custom Raw object
         n_channels, n_samples, n_epochs = self.get_data_size()
 
-        # Set in the rejection matrix the bad channels
-        for ep in np.arange(n_epochs):
-            bad_channels = artifacts_df[(artifacts_df['description'] == 'badchannel') & (artifacts_df['epoch'] == ep)]['ch_names'].values
-            bad_channel_indices = np.array([np.where(ch_names == el)[0] for el in bad_channels], dtype=int).flatten()
-            self.artifacts.BC[ep, bad_channel_indices, :] = True
+        # Build channel-name → index map once (avoids repeated np.where scans)
+        ch_idx_map = {ch: i for i, ch in enumerate(ch_names)}
 
-        # Set in the rejection matrix the bad times
-        for ep in np.arange(n_epochs):
-            bad_time = artifacts_df[(artifacts_df['description'] == 'badtime') & (artifacts_df['epoch'] == ep)].reset_index(drop=True)
-            onset_indices = np.searchsorted(t, bad_time['onset'])
-            end_indices = np.searchsorted(t, bad_time['onset'] + bad_time['duration'])
-            for start, end in zip(onset_indices, end_indices):
+        # BC — single filter, then fully-vectorized fancy indexing (no Python loop)
+        bc_rows = artifacts_df[artifacts_df['description'] == 'badchannel']
+        if len(bc_rows) > 0:
+            ep_idx = bc_rows['epoch'].values.astype(int)
+            ch_idx = np.array([ch_idx_map[ch] for ch in bc_rows['ch_names'].values])
+            self.artifacts.BC[ep_idx, ch_idx, :] = True
+
+        # BT — single filter, loop over matched rows only
+        bt_rows = artifacts_df[artifacts_df['description'] == 'badtime']
+        if len(bt_rows) > 0:
+            ep_idx = bt_rows['epoch'].values.astype(int)
+            starts = np.round((bt_rows['onset'].values - t[0]) / dt).astype(int)
+            ends = np.round((bt_rows['onset'].values + bt_rows['duration'].values - t[0]) / dt).astype(int)
+            for ep, start, end in zip(ep_idx, starts, ends):
                 self.artifacts.BT[ep, :, start:end] = True
 
-        # Set in the rejection matrix the bad data
-        for ep in np.arange(n_epochs):
-            bad_data = artifacts_df[(artifacts_df['description'] == 'artifact') & (artifacts_df['epoch'] == ep)].reset_index(drop=True)
-            onset_indices = np.searchsorted(t, bad_data['onset'])
-            end_indices = np.searchsorted(t, bad_data['onset'] + bad_data['duration'])
-            channel_indices = np.array([np.where(ch_names == ch)[0][0] for ch in bad_data['ch_names']])
-            for el, start, end in zip(channel_indices, onset_indices, end_indices):
+        # BCT — single filter, loop over matched rows only
+        bct_rows = artifacts_df[artifacts_df['description'] == 'artifact']
+        if len(bct_rows) > 0:
+            ep_idx = bct_rows['epoch'].values.astype(int)
+            starts = np.round((bct_rows['onset'].values - t[0]) / dt).astype(int)
+            ends = np.round((bct_rows['onset'].values + bct_rows['duration'].values - t[0]) / dt).astype(int)
+            ch_idx = np.array([ch_idx_map[ch] for ch in bct_rows['ch_names'].values])
+            for ep, el, start, end in zip(ep_idx, ch_idx, starts, ends):
                 self.artifacts.BCT[ep, el, start:end] = True
 
-        # Set in the rejection matrix the corrected data
-        for ep in np.arange(n_epochs):  
-            corrected_data = artifacts_df[(artifacts_df['description'] == 'corrected') & (artifacts_df['epoch'] == ep)].reset_index(drop=True)
-            onset_indices = np.searchsorted(t, corrected_data['onset'])
-            end_indices = np.searchsorted(t, corrected_data['onset'] + corrected_data['duration'])
-            channel_indices = np.array([np.where(ch_names == ch)[0][0] for ch in corrected_data['ch_names']])
-            for el, start, end in zip(channel_indices, onset_indices, end_indices):
+        # CCT — single filter, loop over matched rows only
+        cct_rows = artifacts_df[artifacts_df['description'] == 'corrected']
+        if len(cct_rows) > 0:
+            ep_idx = cct_rows['epoch'].values.astype(int)
+            starts = np.round((cct_rows['onset'].values - t[0]) / dt).astype(int)
+            ends = np.round((cct_rows['onset'].values + cct_rows['duration'].values - t[0]) / dt).astype(int)
+            ch_idx = np.array([ch_idx_map[ch] for ch in cct_rows['ch_names'].values])
+            for ep, el, start, end in zip(ep_idx, ch_idx, starts, ends):
                 self.artifacts.CCT[ep, el, start:end] = True
-        
-        # Set in the rejection matrix the bad epochs and restore rejection reasons
+
+        # BE — single filter, loop over matched rows only
         has_reason_col = 'reason' in artifacts_df.columns
-        for ep in np.arange(n_epochs):
-            bad_ep_rows = artifacts_df[(artifacts_df['description'] == 'badepoch') & (artifacts_df['epoch'] == ep)]
-            if len(bad_ep_rows) > 0:
-                self.artifacts.BE[ep] = True
-                if has_reason_col:
-                    reason_str = bad_ep_rows['reason'].iloc[0]
-                    if pd.notna(reason_str) and reason_str != '':
-                        self.artifacts.rejection_reasons[ep] = set(reason_str.split(';'))
-                    else:
-                        self.artifacts.rejection_reasons[ep] = {'unknown'}
+        be_rows = artifacts_df[artifacts_df['description'] == 'badepoch']
+        for _, row in be_rows.iterrows():
+            ep = int(row['epoch'])
+            self.artifacts.BE[ep] = True
+            if has_reason_col:
+                reason_str = row['reason']
+                if pd.notna(reason_str) and reason_str != '':
+                    self.artifacts.rejection_reasons[ep] = set(reason_str.split(';'))
                 else:
                     self.artifacts.rejection_reasons[ep] = {'unknown'}
+            else:
+                self.artifacts.rejection_reasons[ep] = {'unknown'}
+
+        # Normalize BE shape to (n_epochs,) consistent with set_be()
+        self.artifacts.BE = self.artifacts.BE.flatten()
 
 
     def run_algorithms(self, cfg_algorithms):
@@ -1767,6 +1769,7 @@ class EpochsAPICE(mne.EpochsArray):
 
         # get the artifacts in a dataframe
         artifacts_df = self.rejection_matrix_to_data_frame()
+        artifacts_backup = self.artifacts
         delattr(self, 'artifacts')
                 
         # Save the epochs and the artifacts information in a csv file in the output directory
@@ -1777,7 +1780,11 @@ class EpochsAPICE(mne.EpochsArray):
         parent_dir.mkdir(parents=True, exist_ok=True)
         
         epochs_fullpath = parent_dir / (file_name + '.fif')
-        self.save(epochs_fullpath, overwrite=overwrite)
+        try:
+            self.save(epochs_fullpath, overwrite=overwrite)
+        except Exception:
+            self.artifacts = artifacts_backup
+            raise
         print(f"Epochs saved at {epochs_fullpath}.")
         
         # check if the artifacts .cs file already exists and if overwrite is False, raise an error

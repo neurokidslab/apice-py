@@ -1113,10 +1113,10 @@ class ArtifactsEpochs(Artifacts):
                 f"The epochs object must be an instance of mne.BaseEpochs, got {type(epochs)}."
             )
         
-        # if kwargs is empyt load default parameters
+        # if kwargs is empty load default parameters
         if not kwargs:
-            cfg_define_bcbt_epochs = get_cfg(None, 'define_bcbt_epochs_config.json')
-        super().__init__(epochs, **cfg_define_bcbt_epochs)
+            kwargs = get_cfg(None, 'define_bcbt_epochs_config.json')
+        super().__init__(epochs, **kwargs)
         self.rejection_reasons = [set() for _ in range(self.n_epochs)]
 
     def update_bc(self, bc):
