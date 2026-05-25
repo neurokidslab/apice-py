@@ -288,55 +288,64 @@ class RawAPICE(mne.io.RawArray):
         """
 
         print("Converting annotations to artifacts matrix")
-        
+
         # Convert annotations to a DataFrame for easier manipulation
         annotations_df = self.annotations.to_data_frame(time_format=None)
         if 'ch_names' not in annotations_df.columns:
             annotations_df['ch_names'] = [[] for _ in range(len(annotations_df))]
-            # annotations_df['ch_names'] = None 
 
-        # Get time vector and channel list from the raw data structure
+        # Get time vector and channel list from the raw data structure.
+        # self.times starts at 0.0 regardless of first_samp.
+        # Annotation onsets are stored in absolute time (first_time already
+        # added by annotate_bads), so we subtract first_time before mapping
+        # back to sample indices.  np.round is used instead of np.searchsorted
+        # to avoid off-by-one errors from floating-point accumulation.
         t = self.times
-        dt = np.mean(np.diff(t))  # sample period in seconds
+        dt = np.mean(np.diff(t))
+        first_time = float(self.first_time)
         ch_names = np.asarray(self.info['ch_names'])
 
-        # Get data size information from the custom Raw object
-        n_channels, n_samples, n_epochs = self.get_data_size()
+        def _onsets_to_indices(onsets, durations):
+            """Convert absolute-time onsets/durations to (start, end) index pairs."""
+            onsets_rel = np.asarray(onsets) - first_time - t[0]
+            starts = np.round(onsets_rel / dt).astype(int)
+            ends   = np.round((onsets_rel + np.asarray(durations)) / dt).astype(int)
+            return starts, ends
 
-        # Build channel-name → index map once
-        ch_idx_map = {ch: i for i, ch in enumerate(ch_names)}
-
-        # Create a rejection matrix for bad channels (BC)
-        # Get indices of bad channels and ensure they are integers
-        bad_channel_indices = np.array([np.where(ch_names == el)[0] for el in self.info['bads']], dtype=int).flatten()
-
-        # Apply the bad channel mask efficiently
+        # BC — load bad channels from info['bads'], skipping any name not
+        # present in ch_names (e.g. a reference electrode excluded from data).
+        bad_channel_indices = np.array(
+            [np.where(ch_names == el)[0][0]
+             for el in self.info['bads'] if el in ch_names],
+            dtype=int,
+        )
         self.artifacts.BC[bad_channel_indices, 0] = True
 
-        # Create a rejection matrix for bad times (BT)
+        # BT
         bad_time = annotations_df[annotations_df['description'] == bt_label].reset_index(drop=True)
-        if len(bad_time) > 0:
-            onset_indices = np.round((bad_time['onset'].values - t[0]) / dt).astype(int)
-            end_indices = np.round((bad_time['onset'].values + bad_time['duration'].values - t[0]) / dt).astype(int)
-            for start, end in zip(onset_indices, end_indices):
+        if len(bad_time):
+            starts, ends = _onsets_to_indices(bad_time['onset'], bad_time['duration'])
+            for start, end in zip(starts, ends):
                 self.artifacts.BT[0, start:end] = True
 
-        # Create a rejection matrix for bad data (BCT)
+        # BCT
         bad_data = annotations_df[annotations_df['description'] == bct_label].reset_index(drop=True)
-        if len(bad_data) > 0:
-            onset_indices = np.round((bad_data['onset'].values - t[0]) / dt).astype(int)
-            end_indices = np.round((bad_data['onset'].values + bad_data['duration'].values - t[0]) / dt).astype(int)
-            channel_indices = np.array([ch_idx_map[ch[0] if isinstance(ch, (list, tuple)) else ch] for ch in bad_data['ch_names']])
-            for el, start, end in zip(channel_indices, onset_indices, end_indices):
+        if len(bad_data):
+            starts, ends = _onsets_to_indices(bad_data['onset'], bad_data['duration'])
+            channel_indices = np.array(
+                [np.where(ch_names == ch)[0][0] for ch in bad_data['ch_names']]
+            )
+            for el, start, end in zip(channel_indices, starts, ends):
                 self.artifacts.BCT[el, start:end] = True
 
-        # Create a rejection matrix for corrected data (CCT)
+        # CCT
         corrected_data = annotations_df[annotations_df['description'] == cct_label].reset_index(drop=True)
-        if len(corrected_data) > 0:
-            onset_indices = np.round((corrected_data['onset'].values - t[0]) / dt).astype(int)
-            end_indices = np.round((corrected_data['onset'].values + corrected_data['duration'].values - t[0]) / dt).astype(int)
-            channel_indices = np.array([ch_idx_map[ch[0] if isinstance(ch, (list, tuple)) else ch] for ch in corrected_data['ch_names']])
-            for el, start, end in zip(channel_indices, onset_indices, end_indices):
+        if len(corrected_data):
+            starts, ends = _onsets_to_indices(corrected_data['onset'], corrected_data['duration'])
+            channel_indices = np.array(
+                [np.where(ch_names == ch)[0][0] for ch in corrected_data['ch_names']]
+            )
+            for el, start, end in zip(channel_indices, starts, ends):
                 self.artifacts.CCT[el, start:end] = True
 
     def remove_artifacts_annotations(self, bt_label='badtime', bct_label='artifact', cct_label='corrected') -> None:
