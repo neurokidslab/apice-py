@@ -35,26 +35,17 @@
                     "mask": 0
                 },
                 "post_detection": false
-            }
-        }
-    },
-    "bad_channels_modify": {
-        "position": 2,
-        "min_loops": 0,
-        "max_loops": 1,
-        "min_rejection": 0,
-        "define_bcbt": true,
-        "algorithms": {
-            "ShortGoodSegments_1": {
-                "position": 1,
+            },
+            "ShortGoodSegments_3": {
+                "position": 3,
                 "class_name": "ShortGoodSegments",
                 "parameters": {
-                    "time_limit": 10
+                    "time_limit": 5
                 },
                 "post_detection": true
             },
-            "ShortBadSegments_2": {
-                "position": 2,
+            "ShortBadSegments_4": {
+                "position": 4,
                 "class_name": "ShortBadSegments",
                 "parameters": {
                     "time_limit": 0.5
@@ -64,7 +55,7 @@
         }
     },
     "huge_amplitude_abs": {
-        "position": 3,
+        "position": 2,
         "min_loops": 0,
         "max_loops": 1,
         "min_rejection": 0,
@@ -89,7 +80,7 @@
         }
     },
     "huge_artifacts": {
-        "position": 4,
+        "position": 3,
         "min_loops": 0,
         "max_loops": 1,
         "min_rejection": 0,
@@ -124,7 +115,7 @@
                     "thresh_type": "outliers_per_channel",
                     "thresh": [
                         null,
-                        3.0
+                        4
                     ],
                     "time_window": 0.5,
                     "time_window_step": 0.1,
@@ -139,15 +130,15 @@
                 "position": 3,
                 "class_name": "ShortGoodSegments",
                 "parameters": {
-                    "time_limit": 0.5
+                    "time_limit": 1.0
                 },
                 "post_detection": true
             },
-            "ShortBadSegments_4": {
+            "Mask_4": {
                 "position": 4,
-                "class_name": "ShortBadSegments",
+                "class_name": "Mask",
                 "parameters": {
-                    "time_limit": 0.1
+                    "mask_length": 0.5
                 },
                 "post_detection": true
             }

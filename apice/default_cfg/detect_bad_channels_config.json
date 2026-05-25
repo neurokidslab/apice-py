@@ -40,7 +40,15 @@
                 "position": 3,
                 "class_name": "ShortGoodSegments",
                 "parameters": {
-                    "time_limit": 2
+                    "time_limit": 5
+                },
+                "post_detection": true
+            },
+            "ShortBadSegments_4": {
+                "position": 4,
+                "class_name": "ShortBadSegments",
+                "parameters": {
+                    "time_limit": 0.5
                 },
                 "post_detection": true
             }
@@ -50,7 +58,7 @@
         "position": 2,
         "min_loops": 0,
         "max_loops": 5,
-        "min_rejection": 0.00011,
+        "min_rejection": 0.00011709712314515798,
         "define_bcbt": true,
         "algorithms": {
             "PowerHighFreq": {
@@ -114,7 +122,7 @@
                 "position": 1,
                 "class_name": "ShortGoodSegments",
                 "parameters": {
-                    "time_limit": 10
+                    "time_limit": 1
                 },
                 "post_detection": true
             },

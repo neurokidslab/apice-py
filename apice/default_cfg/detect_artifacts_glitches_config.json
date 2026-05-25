@@ -60,7 +60,7 @@
                     "thresh_type": "outliers_per_channel",
                     "thresh": [
                         null,
-                        3.0
+                        4
                     ],
                     "time_window": 0.5,
                     "time_window_step": 0.1,
