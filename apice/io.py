@@ -18,7 +18,8 @@ from apice.data_structures import RawAPICE, EpochsAPICE
 # %% FUNCTIONS
 
 
-def load_rawapice(fname, bt_labels='badtime', bct_labels='artifact', cct_labels='corrected'):
+def load_rawapice(fname, bt_labels='badtime', bct_labels='artifact', cct_labels='corrected',
+                  verbose=None, **kwargs):
     """Load raw data and wrap it as ``RawAPICE``.
 
     Parameters
@@ -31,6 +32,11 @@ def load_rawapice(fname, bt_labels='badtime', bct_labels='artifact', cct_labels=
         Annotation label used for bad channel-time segments.
     cct_labels : str, default='corrected'
         Annotation label used for corrected segments.
+    verbose : bool | str | int | None, default=None
+        MNE verbosity setting passed to ``RawAPICE``.
+    **kwargs
+        Additional keyword arguments forwarded to ``ArtifactsRaw`` via
+        ``RawAPICE`` (e.g. custom threshold parameters).
 
     Returns
     -------
@@ -38,18 +44,24 @@ def load_rawapice(fname, bt_labels='badtime', bct_labels='artifact', cct_labels=
         Loaded and wrapped raw object.
     """
     # load the data
-    raw = mne.io.read_raw(fname, preload=False, verbose=None)
+    raw = mne.io.read_raw(fname, preload=False, verbose=verbose)
     # Initialize RawAPICE structure
-    raw = RawAPICE(raw, bt_label=bt_labels, bct_label=bct_labels, cct_label=cct_labels)
+    raw = RawAPICE(raw, bt_label=bt_labels, bct_label=bct_labels, cct_label=cct_labels,
+                   verbose=verbose, **kwargs)
     return raw
 
-def load_epochapice(fname):
+def load_epochapice(fname, verbose=None, **kwargs):
     """Load epochs data and wrap it as ``EpochsAPICE``.
 
     Parameters
     ----------
     fname : str | pathlib.Path
         Path to an epochs FIF file.
+    verbose : bool | str | int | None, default=None
+        MNE verbosity setting passed to ``EpochsAPICE``.
+    **kwargs
+        Additional keyword arguments forwarded to ``ArtifactsEpochs`` via
+        ``EpochsAPICE``.
 
     Returns
     -------
@@ -57,9 +69,9 @@ def load_epochapice(fname):
         Loaded and wrapped epochs object.
     """
     # load the epochs
-    epochs = mne.read_epochs(fname)
+    epochs = mne.read_epochs(fname, verbose=verbose)
     # Initialize EpochsAPICE structure
-    epochs = EpochsAPICE(epochs)
+    epochs = EpochsAPICE(epochs, verbose=verbose, **kwargs)
     # get the path to the parent folder
     folder_path = Path(fname).parent
     art_file = folder_path / (Path(fname).stem + '-artifacts.csv')
