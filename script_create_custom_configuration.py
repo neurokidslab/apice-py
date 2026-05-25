@@ -1,378 +1,152 @@
 """
 This script creates custom configuration files for different steps of the artifacts rejection pipeline.
 The configuration files are saved in the specified output directory in JSON format.
-You can modify the parameters in the script to create configurations that suit your specific needs.
+
+Modify the parameters passed to each function to create configurations that suit your specific needs.
+Comment out any section you do not need.
+
 The script creates configurations for:
 - Detecting bad epochs
 - Defining bad channels and bad times
 - Correcting artifacts using PCA and spline methods
 - Detecting bad channels based on basic and power features
-- Detecting huge artifacts based on amplitude and max change    
-- Detecting glitches based on max change
-- Detecting artifacts based on amplitude and max change with and without average reference
-You can comment out or modify the sections of the script to create only the configurations you need.
+- Detecting huge artifacts and glitches
+- Detecting motion artifacts
 """
 
 import json
-from apice.artifacts_rejection import ArtifactsConfiguration, concatenate_configurations
 from pathlib import Path
 
+from apice.artifacts_rejection import concatenate_configurations
+from apice.standard_conf import (
+    cfg_bad_epochs,
+    cfg_define_bcbt_epochs,
+    cfg_define_bcbt_raw,
+    cfg_correction_target_pca,
+    cfg_correction_spline_segments,
+    cfg_correction_spline_channels,
+    cfg_detect_bad_channels,
+    cfg_detect_power,
+    cfg_detect_artifacts_huge,
+    cfg_detect_artifacts_glitches,
+    cfg_detect_artifacts_motion,
+)
 
 def main():
 
-    # Input Output parameters
+    # Input / Output parameters
     # ============================================================================================
 
     # Directory for output configuration files
     OUTPUT_DIR = r"cfg_output_folder"
     Path(OUTPUT_DIR).mkdir(parents=True, exist_ok=True)
 
-        
     # ============================================================================================
-    # %% Create a default configuration for definig bad epochs
-    bad_epochs_cfg = {}
-    bad_epochs_cfg['bad_data'] = 0.30
-    bad_epochs_cfg['bad_time'] = 0
-    bad_epochs_cfg['bad_channel'] = 0.30
-    bad_epochs_cfg['lim_dist'] = 2
-    bad_epochs_cfg['lim_gfp'] = 2
-    # save to json
-    with open(Path(OUTPUT_DIR) / 'detect_bad_epochs_config.json', 'w') as f:
-        json.dump(bad_epochs_cfg, f, indent=4)
+    # %% Bad epochs
+    cfg_bad_epochs(
+        bad_data=1.00,
+        bad_time=0,
+        bad_channel=0.30,
+        lim_dist=2,
+        lim_gfp=2,
+        filename=Path(OUTPUT_DIR) / 'detect_bad_epochs_config.json',
+    )
 
     # ============================================================================================
-    # %% Create default configuration for BC anc BT definition
-    define_bcbt_cfg = {}
-    define_bcbt_cfg['thresh_bad_channels'] = [0.7, 0.5, 0.30]
-    define_bcbt_cfg['thresh_bad_times'] = [0.7, 0.5, 0.3]
-    define_bcbt_cfg['min_good_time'] = 1.000
-    define_bcbt_cfg['min_bad_time'] = 0.100
-    define_bcbt_cfg['mask_time'] = 0
-    # save to json
-    with open(Path(OUTPUT_DIR) / 'define_bcbt_raw_config.json', 'w') as f:
-        json.dump(define_bcbt_cfg, f, indent=4)
+    # %% BC and BT definition (raw and epochs)
+    cfg_define_bcbt_raw(
+        bcbt_method='functional',
+        thresh_bad_channels=0.30,
+        thresh_bad_times=0.30,
+        min_good_time=1.000,
+        min_bad_time=0.100,
+        mask_time=0,
+        filename=Path(OUTPUT_DIR) / 'define_bcbt_raw_config.json',
+    )
+    cfg_define_bcbt_epochs(
+        bcbt_method='functional',
+        thresh_bad_channels=0.10,
+        thresh_bad_times=0.30,
+        min_good_time=1.000,
+        min_bad_time=0.100,
+        mask_time=0,
+        filename=Path(OUTPUT_DIR) / 'define_bcbt_epochs_config.json',
+    )
 
     # ============================================================================================
-    # %% Create default configuration for BC anc BT definition on epochs
-    define_bcbt_cfg = {}
-    define_bcbt_cfg['thresh_bad_channels'] = [0.7, 0.5, 0.05]
-    define_bcbt_cfg['thresh_bad_times'] = [0.7, 0.5, 0.30]
-    define_bcbt_cfg['min_good_time'] = 1.000
-    define_bcbt_cfg['min_bad_time'] = 0.100
-    define_bcbt_cfg['mask_time'] = 0
-    # save to json
-    with open(Path(OUTPUT_DIR) / 'define_bcbt_epochs_config.json', 'w') as f:
-        json.dump(define_bcbt_cfg, f, indent=4)
-
-
-    # ============================================================================================
-    # %% Create default configuration for artifacts correction
-    pca_cfg = {}
-    pca_cfg['max_time'] = 0.125
-    pca_cfg['components_to_remove'] = None
-    pca_cfg['variance_to_remove'] = 0.99
-    pca_cfg['mask_time'] = 0.050
-    pca_cfg['all_time'] = 'all'
-    pca_cfg['all_channel'] = 'no_bad_channel'
-    pca_cfg['all_epochs'] = 'all'
-    pca_cfg['splice_method'] = 1
-    pca_cfg['save_corrected'] = True
-    # save to json
-    with open(Path(OUTPUT_DIR) / 'correction_target_pca_config.json', 'w') as f:
-        json.dump(pca_cfg, f, indent=4)
-
-    spline_segments_cgf = {}
-    spline_segments_cgf['p'] = 0.5
-    spline_segments_cgf['p_neighbors'] = 1
-    spline_segments_cgf['min_good_time'] = 1.00 
-    spline_segments_cgf['min_intertime'] = 0.050
-    spline_segments_cgf['mask_time'] = 0.100
-    spline_segments_cgf['min_segment_time'] = 0.250
-    spline_segments_cgf['splice_method'] = 1
-    spline_segments_cgf['parallelize_mode'] = 'auto'
-    spline_segments_cgf['save_corrected'] = True
-    # save to json
-    with open(Path(OUTPUT_DIR) / 'correction_spline_segments_config.json', 'w') as f:
-        json.dump(spline_segments_cgf, f, indent=4) 
-
-    spline_channels_cgf = {}
-    spline_channels_cgf['p'] = 0.5
-    spline_channels_cgf['p_neighbors'] = 1
-    spline_channels_cgf['save_corrected'] = True
-    # save to json
-    with open(Path(OUTPUT_DIR) / 'correction_spline_channels_config.json', 'w') as f:
-        json.dump(spline_channels_cgf, f, indent=4)
+    # %% Artifact correction
+    cfg_correction_target_pca(
+        max_time=0.125,
+        components_to_remove=None,
+        variance_to_remove=0.99,
+        mask_time=0.050,
+        all_time='all',
+        all_channel='no_bad_channel',
+        all_epochs='all',
+        splice_method=1,
+        save_corrected=True,
+        filename=Path(OUTPUT_DIR) / 'correction_target_pca_config.json',
+    )
+    cfg_correction_spline_segments(
+        p=0.5,
+        p_neighbors=1,
+        min_good_time=1.00,
+        min_intertime=0.050,
+        mask_time=0.100,
+        min_segment_time=0.250,
+        splice_method=1,
+        parallelize_mode='auto',
+        save_corrected=True,
+        filename=Path(OUTPUT_DIR) / 'correction_spline_segments_config.json',
+    )
+    cfg_correction_spline_channels(
+        p=0.4,
+        p_neighbors=1,
+        save_corrected=True,
+        filename=Path(OUTPUT_DIR) / 'correction_spline_channels_config.json',
+    )
 
     # ============================================================================================
-    # %% Create the default configuration for bad channels detection and rejection
-    artcfg = ArtifactsConfiguration()
-
-    artcfg.add_algorithm_group('bad_channels_basic', max_loops=1, min_rejection=0, define_bcbt=True)
-    artcfg.add_algorithm('bad_channels_basic', 'FlatChannel', {
-        'bad_data': None,
-        'do_reference_data': False,
-        'do_zscore': False,
-        'time_window': 10,
-        'time_window_step': 5,
-        'min_change': 1e-7,
-        'thresh': 5,
-        'mask': 0,
-    })
-    artcfg.add_algorithm('bad_channels_basic', 'ChannelCorr', {
-        'bad_data': None,
-        'do_reference_data': False,
-        'do_zscore': False,
-        'time_window': 10,
-        'time_window_step': 5,
-        'top_channel_corr': 5,
-        'thresh': 0.4,
-        'mask': 0,
-    })
-    artcfg.add_algorithm('bad_channels_basic', 'ShortGoodSegments', {
-        'time_limit': 2,
-    }, post_detection=True)
-
-
-    artcfg.add_algorithm_group('bad_channels_power', max_loops=3, min_rejection=0.05, define_bcbt=True)
-    artcfg.add_algorithm('bad_channels_power', 'Power', {
-        'bad_data': None,
-        'do_reference_data': False,
-        'do_zscore': False,
-        'time_window': 10,
-        'time_window_step': 5,
-        'freq_band': [20, 40],
-        'thresh': [None, 2],
-        'remove_bct': True,
-        'remove_bt': True,
-        'remove_bc': True,
-        'mask': 0,
-        }, algorithm_name='PowerHighFreq')
-    artcfg.add_algorithm('bad_channels_power', 'Power', {
-        'bad_data': None,
-        'do_reference_data': False,
-        'do_zscore': False,
-        'time_window': 10,
-        'time_window_step': 5,
-        'freq_band': [0.5, 5],
-        'thresh': [None, 2],
-        'remove_bct': True,
-        'remove_bt': True,
-        'remove_bc': True,
-        'mask': 0,
-    }, algorithm_name='PowerLowFreq')
-    artcfg.add_algorithm_group('bad_channels_modify', max_loops=1, min_rejection=0, define_bcbt=True)
-    artcfg.add_algorithm('bad_channels_modify', 'ShortGoodSegments', {
-        'time_limit': 10,
-    }, post_detection=True)
-    artcfg.add_algorithm('bad_channels_modify', 'ShortBadSegments', {
-        'time_limit': 0.500,
-    }, post_detection=True)
-
-
-    artcfg.save_to_json(Path(OUTPUT_DIR) / 'detect_bad_channels_config.json')
-
+    # %% Bad channel detection (basic + power)
+    cfg_badcha = cfg_detect_bad_channels(filename=None)
+    cfg_power = cfg_detect_power(
+        rejection_level=3,
+        min_rejection=None,
+        max_loops=5,
+        filename=None,
+    )
+    artcfg = concatenate_configurations([cfg_badcha, cfg_power])
+    with open(Path(OUTPUT_DIR) / 'detect_bad_channels_config.json', 'w') as f:
+        json.dump(artcfg.cfg, f, indent=4)
 
     # ============================================================================================
-    # %% Create a default configuration for detecting very bad data segments
-
-    artcfg = ArtifactsConfiguration()   
-    
-    artcfg.add_algorithm_group('huge_amplitude_abs', max_loops=1, min_rejection=0, define_bcbt=True)
-    artcfg.add_algorithm('huge_amplitude_abs', 'Amplitude', {
-        'bad_data': None,
-        'do_reference_data': False,
-        'do_zscore': False,
-        'thresh_type': 'absolute',
-        'thresh': 1000*1e-6,
-        'mask': 0,
-        'remove_bct': True,
-        'remove_bt': True,
-        'remove_bc': True,
-    }, algorithm_name='HugeAmplitudeAbsolute')
-
-    artcfg.add_algorithm_group('huge_artifacts', max_loops=1, min_rejection=0, define_bcbt=True)
-    artcfg.add_algorithm('huge_artifacts', 'Amplitude', {
-        'bad_data': None,
-        'do_reference_data': False,
-        'do_zscore': False,
-        'thresh_type': 'outliers_per_channel',
-        'thresh': [-5, 5],
-        'mask': 0,
-        'remove_bct': True,
-        'remove_bt': True,
-        'remove_bc': True,
-    }, algorithm_name='HugeAmplitude')
-    artcfg.add_algorithm('huge_artifacts', 'MaxChange', {
-        'bad_data': None,
-        'do_reference_data': False,
-        'do_zscore': False,
-        'thresh_type': 'outliers_per_channel',
-        'thresh': [None, 5.0],
-        'time_window': 0.500,
-        'time_window_step': 0.100,
-        'mask': 0,
-        'remove_bct': True,
-        'remove_bt': True,
-        'remove_bc': True,
-    }, algorithm_name='HugeMaxChange500ms')
-    artcfg.add_algorithm('huge_artifacts', 'ShortGoodSegments', {
-        'time_limit': 1.000,
-    }, post_detection=True)
-    artcfg.add_algorithm('huge_artifacts', 'Mask', {
-        'mask_length': 0.500,
-    }, post_detection=True)
-
-    artcfg.save_to_json(Path(OUTPUT_DIR) / 'detect_artifacts_huge_config.json')
+    # %% Huge artifacts and glitches
+    cfg_huge = cfg_detect_artifacts_huge(
+        rejection_level=4,
+        abs_thresh_amp=1000 * 1e-6,
+        filename=None,
+    )
+    cfg_glitches = cfg_detect_artifacts_glitches(
+        rejection_level=2,
+        min_rejection=0,
+        max_loops=2,
+        filename=None,
+    )
+    artcfg = concatenate_configurations([cfg_huge, cfg_glitches])
+    with open(Path(OUTPUT_DIR) / 'detect_artifacts_glitches_config.json', 'w') as f:
+        json.dump(artcfg.cfg, f, indent=4)
 
     # ============================================================================================
-    # %% Create a default configuration for detecting glitches
-    
-    artcfg_huge = ArtifactsConfiguration()   
-    artcfg_huge.load_from_json(Path(OUTPUT_DIR) / 'detect_artifacts_huge_config.json')
-
-    artcfg_glitches = ArtifactsConfiguration()
-    
-    artcfg_glitches.add_algorithm_group('glitches', max_loops=2, min_rejection=0, define_bcbt=True)
-    artcfg_glitches.add_algorithm('glitches', 'MaxChange', {
-        'bad_data': None,
-        'do_reference_data': False,
-        'do_zscore': False,
-        'time_window': 0.020,
-        'time_window_step': 0.005,
-        'thresh_type': 'outliers_per_channel',
-        'thresh': [None, 2],
-        'mask': 0,
-        'remove_bct': True,
-        'remove_bt': True,
-        'remove_bc': True,
-    }, algorithm_name='GlitchesMaxChange')
-    
-    artcfg_glitches.add_algorithm('glitches', 'ShortBadSegments', {
-        'time_limit': 0.010,
-    }, post_detection=True)
-
-    artcfg = concatenate_configurations([artcfg_huge.cfg, artcfg_glitches.cfg])
-    artcfg.save_to_json(Path(OUTPUT_DIR) / 'detect_artifacts_glitches_config.json')
-
-    # ============================================================================================
-    # %% Create a default configuration for detecting artifacts
-    artcfg = ArtifactsConfiguration()
-
-    artcfg.add_algorithm_group('huge_amplitude_abs', max_loops=1, min_rejection=0, define_bcbt=True)
-    artcfg.add_algorithm('huge_amplitude_abs', 'Amplitude', {
-        'bad_data': None,
-        'do_reference_data': False,
-        'do_zscore': False,
-        'thresh_type': 'absolute',
-        'thresh': 1000*1e-6,
-        'mask': 0,
-        'remove_bct': True,
-        'remove_bt': True,
-        'remove_bc': True,
-    }, algorithm_name='HugeAmplitudeAbsolute')
-
-    artcfg.add_algorithm_group('artifacts_amplitude', max_loops=5, min_rejection=0.05, define_bcbt=True)
-    artcfg.add_algorithm('artifacts_amplitude', 'Amplitude', {
-        'bad_data': None,
-        'do_reference_data': False,
-        'do_zscore': False,
-        'thresh_type': 'outliers_per_channel',
-        'thresh': [-2, 2],
-        'mask': 0,
-        'remove_bct': True,
-        'remove_bt': True,
-        'remove_bc': True,
-    }, algorithm_name='ArtifactsAmplitude')
-
-    artcfg.add_algorithm_group('artifacts_maxchange500', max_loops=5, min_rejection=0.05, define_bcbt=True)
-    artcfg.add_algorithm('artifacts_maxchange500', 'MaxChange', {
-        'bad_data': None,
-        'do_reference_data': False,
-        'do_zscore': False,
-        'thresh_type': 'outliers_per_channel',
-        'thresh': [None, 2.0],
-        'time_window': 0.500,
-        'time_window_step': 0.100,
-        'mask': 0,
-        'remove_bct': True,
-        'remove_bt': True,
-        'remove_bc': True,
-    }, algorithm_name='MaxChange500ms')
-
-    artcfg.add_algorithm_group('artifacts_maxchange100', max_loops=5, min_rejection=0.05, define_bcbt=True)
-    artcfg.add_algorithm('artifacts_maxchange100', 'MaxChange', {
-        'bad_data': None,
-        'do_reference_data': False,
-        'do_zscore': False,
-        'thresh_type': 'outliers_per_channel',
-        'thresh': [None, 2.0],
-        'time_window': 0.100,
-        'time_window_step': 0.020,
-        'mask': 0,
-        'remove_bct': True,
-        'remove_bt': True,
-        'remove_bc': True,
-    }, algorithm_name='MaxChange100ms')
-
-    artcfg.add_algorithm_group('artifacts_amplitude_avgref', max_loops=5, min_rejection=0.05, define_bcbt=True)
-    artcfg.add_algorithm('artifacts_amplitude_avgref', 'Amplitude', {
-        'bad_data': 'replace by nan',
-        'do_reference_data': True,
-        'do_zscore': False,
-        'thresh_type': 'outliers_all',
-        'thresh': [-2, 2],
-        'mask': 0,
-        'remove_bct': True,
-        'remove_bt': True,
-        'remove_bc': True,
-    }, algorithm_name='ArtifactsAmplitudeAvgRef')
-
-    artcfg.add_algorithm_group('artifacts_maxchange500_avgref', max_loops=5, min_rejection=0.05, define_bcbt=True)
-    artcfg.add_algorithm('artifacts_maxchange500_avgref', 'MaxChange', {
-        'bad_data': 'replace by nan',
-        'do_reference_data': True,
-        'do_zscore': False,
-        'thresh_type': 'outliers_all',
-        'thresh': [None, 2.0],
-        'time_window': 0.500,
-        'time_window_step': 0.100,
-        'mask': 0,
-        'remove_bct': True,
-        'remove_bt': True,
-        'remove_bc': True,
-    }, algorithm_name='MaxChange500msAvgRef')
-
-    artcfg.add_algorithm_group('artifacts_maxchange100_avgref', max_loops=5, min_rejection=0.05, define_bcbt=True)
-    artcfg.add_algorithm('artifacts_maxchange100_avgref', 'MaxChange', {
-        'bad_data': 'replace by nan',
-        'do_reference_data': True,
-        'do_zscore': False,
-        'thresh_type': 'outliers_all',
-        'thresh': [None, 2.0],
-        'time_window': 0.100,
-        'time_window_step': 0.020,
-        'mask': 0,
-        'remove_bct': True,
-        'remove_bt': True,
-        'remove_bc': True,
-    }, algorithm_name='MaxChange100msAvgRef')
-
-    artcfg.add_algorithm_group('artifacts_modify', max_loops=1, min_rejection=0, define_bcbt=True)
-    artcfg.add_algorithm('artifacts_modify', 'ShortBadSegments', {
-        'time_limit': 0.020,
-    }, algorithm_name='VeryShortBadSegments', post_detection=True)
-    artcfg.add_algorithm('artifacts_modify', 'ShortGoodSegments', {
-        'time_limit': 0.020,
-    }, algorithm_name='VeryShortGoodSegments', post_detection=True)
-    artcfg.add_algorithm('artifacts_modify', 'ShortBadSegments', {
-        'time_limit': 0.050,
-    }, algorithm_name='ShortBadSegments', post_detection=True)
-    artcfg.add_algorithm('artifacts_modify', 'ShortGoodSegments', {
-        'time_limit': 0.500,
-    }, algorithm_name='ShortGoodSegments', post_detection=True)
-
-    artcfg.save_to_json(Path(OUTPUT_DIR) / 'detect_artifacts_all_config.json')
+    # %% Motion artifacts
+    cfg_detect_artifacts_motion(
+        rejection_level=3,
+        min_rejection=None,
+        max_loops=5,
+        abs_thresh_amp=1000 * 1e-6,
+        filename=Path(OUTPUT_DIR) / 'detect_artifacts_motion_config.json',
+    )
 
 
 if __name__ == '__main__':
     main()
+
