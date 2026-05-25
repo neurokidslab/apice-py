@@ -715,6 +715,106 @@ class RawAPICE(mne.io.RawArray):
                 self.artifacts.BCT[idx_reference_channels, self.artifacts.BT[0,:]] = True
 
 
+# %% UTILITY FUNCTIONS FOR EPOCHS
+
+def normalize_epochs(epochs, by_epochs='single', by_channels='all', where=None,
+                     mean_value=0, std_value=None, rescale=None):
+    """Normalize epoch data in place.
+
+    Statistics are computed over the specified time window (or the full epoch
+    if *where* is ``None``) and applied to the entire epoch duration.
+
+    Parameters
+    ----------
+    epochs : mne.BaseEpochs
+        Epochs object to normalize.  Modified in place.
+    by_epochs : {'single', 'all'}, default='single'
+        If ``'single'``, statistics are computed independently per epoch.
+        If ``'all'``, data from all epochs are pooled before computing
+        statistics.
+    by_channels : {'single', 'all'}, default='all'
+        If ``'single'``, statistics are computed independently per channel.
+        If ``'all'``, data from all channels are pooled.
+    where : list of float | None, default=None
+        ``[tmin, tmax]`` window in seconds used to compute statistics.
+        If ``None``, the full epoch duration is used.
+    mean_value : float | numpy.ndarray | None, default=0
+        Value to subtract.  If ``None``, the mean is computed from the data.
+        Default ``0`` leaves the mean unchanged.
+    std_value : float | numpy.ndarray | None, default=None
+        Divisor.  If ``None``, the standard deviation is computed from the
+        data.
+    rescale : bool | None, default=None
+        If ``True``, rescale after normalization so the global standard
+        deviation matches the original data.
+
+    Returns
+    -------
+    epochs : mne.BaseEpochs
+        The same object with normalized ``_data``.
+    """
+    print('Epoch normalization...')
+    print(f' - by_epochs={by_epochs!r}, by_channels={by_channels!r}')
+
+    n_epochs = len(epochs.events)
+    n_channels = len(epochs.ch_names)
+    n_samples = len(epochs.times)
+
+    if mean_value is None or std_value is None:
+
+        if where is None:
+            where = [epochs.times[0], epochs.times[-1]]
+        print(f' - Statistics computed over [{where[0]:.3f}, {where[1]:.3f}] s')
+
+        idxtime = np.logical_and(epochs.times >= where[0], epochs.times <= where[1])
+        ref_data = epochs._data[:, :, idxtime].copy()  # (n_epochs, n_channels, n_window)
+
+        if by_epochs == 'all':
+            # Pool across all epochs: reshape to (n_channels, n_epochs * n_window)
+            ref_data_t = np.transpose(ref_data, (1, 0, 2))
+            ref_data_t = np.reshape(ref_data_t, (n_channels, -1))
+            if by_channels == 'single':
+                if mean_value is None:
+                    mv = np.nanmean(ref_data_t, axis=1)       # (n_channels,)
+                    mean_value = np.tile(mv[np.newaxis, :, np.newaxis], (n_epochs, 1, n_samples))
+                if std_value is None:
+                    sv = np.nanstd(ref_data_t, axis=1)        # (n_channels,)
+                    std_value = np.tile(sv[np.newaxis, :, np.newaxis], (n_epochs, 1, n_samples))
+            else:  # by_channels == 'all'
+                if mean_value is None:
+                    mean_value = float(np.nanmean(ref_data_t))
+                if std_value is None:
+                    std_value = float(np.nanstd(ref_data_t))
+
+        else:  # by_epochs == 'single'
+            if by_channels == 'single':
+                if mean_value is None:
+                    mv = np.nanmean(ref_data, axis=2)          # (n_epochs, n_channels)
+                    mean_value = np.tile(mv[:, :, np.newaxis], (1, 1, n_samples))
+                if std_value is None:
+                    sv = np.nanstd(ref_data, axis=2)           # (n_epochs, n_channels)
+                    std_value = np.tile(sv[:, :, np.newaxis], (1, 1, n_samples))
+            else:  # by_channels == 'all'
+                ref_flat = np.reshape(ref_data, (n_epochs, -1))  # (n_epochs, n_channels * n_window)
+                if mean_value is None:
+                    mv = np.nanmean(ref_flat, axis=1)          # (n_epochs,)
+                    mean_value = np.tile(mv[:, np.newaxis, np.newaxis], (1, n_channels, n_samples))
+                if std_value is None:
+                    sv = np.nanstd(ref_flat, axis=1)           # (n_epochs,)
+                    std_value = np.tile(sv[:, np.newaxis, np.newaxis], (1, n_channels, n_samples))
+
+    if rescale:
+        rescale_value = float(np.std(epochs._data))
+
+    epochs._data = epochs._data - mean_value
+    epochs._data = np.divide(epochs._data, std_value)
+
+    if rescale:
+        epochs._data = epochs._data * rescale_value
+
+    return epochs
+
+
 class EpochsAPICE(mne.EpochsArray):
     """Epoched EEG container with APICE artifact matrices and utilities.
 
@@ -1060,6 +1160,39 @@ class EpochsAPICE(mne.EpochsArray):
         spline_chan = ChannelsSphericalSplineInterpolation(**cfg_spline_channels)
         spline_chan.correct(self)
         self.define_bcbt()
+
+    def normalize(self, by_epochs='single', by_channels='all', where=None,
+                  mean_value=0, std_value=None, rescale=None):
+        """Normalize epoch data in place.
+
+        Parameters
+        ----------
+        by_epochs : {'single', 'all'}, default='single'
+            If ``'single'``, statistics are computed independently per epoch.
+            If ``'all'``, data from all epochs are pooled.
+        by_channels : {'single', 'all'}, default='all'
+            If ``'single'``, statistics are computed independently per channel.
+            If ``'all'``, data from all channels are pooled.
+        where : list of float | None, default=None
+            ``[tmin, tmax]`` window in seconds used to compute statistics.
+            If ``None``, the full epoch duration is used.
+        mean_value : float | numpy.ndarray | None, default=0
+            Value to subtract.  If ``None``, the mean is computed from the
+            data.  Default ``0`` leaves the mean unchanged.
+        std_value : float | numpy.ndarray | None, default=None
+            Divisor.  If ``None``, the standard deviation is computed from
+            the data.
+        rescale : bool | None, default=None
+            If ``True``, rescale after normalization so the global standard
+            deviation matches the original data.
+
+        Returns
+        -------
+        None
+        """
+        normalize_epochs(self, by_epochs=by_epochs, by_channels=by_channels,
+                         where=where, mean_value=mean_value,
+                         std_value=std_value, rescale=rescale)
 
     def define_bad_epochs(self, bad_data = 1, bad_time = 0, bad_channel = 0.3, lim_dist=2, lim_gfp=2):
         """Run all bad-epoch criteria and update ``BE``.
