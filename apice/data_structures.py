@@ -411,10 +411,13 @@ class RawAPICE(mne.io.RawArray):
                             )
                 
         # Additional code to handle the rejection matrix and update artifacts in the epochs
-        # Calculate left and right limits for the time window
-        samples_start = ((-epochs.times[0]) * self.info['sfreq']).astype(int)
+        # Calculate left and right limits for the time window.
+        # Use np.round before int conversion to avoid off-by-one from floating-point
+        # accumulation (e.g. times[0]=-0.19999999 would truncate to 99 instead of 100).
+        samples_start = int(np.round(-epochs.times[0] * self.info['sfreq']))
         samples_epoch = len(epochs.times)
-        
+        n_raw_samples = self.n_times  # total samples in raw (zero-based)
+
         # Extract the stimulus times from the events
         stimulus_times = events[:, 0]
 
@@ -436,15 +439,23 @@ class RawAPICE(mne.io.RawArray):
         for ep in np.arange(n_epochs):
             try:
                 # Convert absolute sample indices to indices relative to RawAPICE by accounting for first_samp
-                epoch_start_time = (stimulus_times[ep] - self.first_samp - samples_start).astype(int)
-                epoch_end_time = (epoch_start_time + samples_epoch - 1).astype(int)
-                            
-                epochs.artifacts.BCT[ep] = self.artifacts.BCT[:, epoch_start_time:epoch_end_time+1]
-                epochs.artifacts.BT[ep] = self.artifacts.BT[:, epoch_start_time:epoch_end_time+1]
-                epochs.artifacts.BC[ep] = self.artifacts.BC
-                epochs.artifacts.CCT[ep] = self.artifacts.CCT[:, epoch_start_time:epoch_end_time+1]
-            except IndexError:
-                print(f"IndexError: Skipping epoch {ep} due to out-of-bounds indexing.")
+                epoch_start_time = int(stimulus_times[ep]) - int(self.first_samp) - samples_start
+                epoch_end_time   = epoch_start_time + samples_epoch
+
+                # Guard against epochs that clip the edge of the recording.
+                # Such epochs should already have been dropped by mne.Epochs, but
+                # a shape-mismatch (ValueError) would otherwise go uncaught.
+                if epoch_start_time < 0 or epoch_end_time > n_raw_samples:
+                    print(f"Warning: epoch {ep} window [{epoch_start_time}, {epoch_end_time}) "
+                          f"is out of raw bounds [0, {n_raw_samples}). Skipping artifact copy.")
+                    continue
+
+                epochs.artifacts.BCT[ep] = self.artifacts.BCT[:, epoch_start_time:epoch_end_time]
+                epochs.artifacts.CCT[ep] = self.artifacts.CCT[:, epoch_start_time:epoch_end_time]
+                # BC is channel-level (not time-varying within epoch) — copy once per epoch
+                epochs.artifacts.BC[ep]  = self.artifacts.BC
+            except (IndexError, ValueError) as exc:
+                print(f"Warning: Skipping artifact copy for epoch {ep}: {exc}")
 
         return epochs    
     
@@ -871,6 +882,13 @@ class EpochsAPICE(mne.EpochsArray):
 
         # Copy projectors if any
         self._projector = epochs._projector
+
+        # Copy annotations — mne.EpochsArray.__init__ resets _annotations to None,
+        # but mne.Epochs(raw, ...) populates _annotations with the raw annotations
+        # cropped to each epoch window. Restore them so callers can inspect them.
+        src_annotations = getattr(epochs, '_annotations', None)
+        if src_annotations is not None:
+            self._annotations = src_annotations.copy()
 
         # Store source type for traceability
         self._source_type = type(epochs).__name__

@@ -6,6 +6,7 @@ generation.
 """
 
 import json
+import re
 import numpy as np
 import pandas as pd
 import time
@@ -1638,7 +1639,8 @@ def generate_metadata_for_epochs(raw,
     kwargs_events_from_annotations_for_segmentation : dict, default={}
         Keyword arguments used to derive segmentation events.
     columns_events_to_keep : list[str] | None, default=None
-        Optional subset of metadata columns to retain.
+        Optional list of regex patterns. Any metadata column whose name matches
+        at least one pattern is retained. Pass ``None`` to keep all columns.
     tmin : float, default=-0.5
         Metadata window start in seconds.
     tmax : float, default=0.5
@@ -1671,9 +1673,10 @@ def generate_metadata_for_epochs(raw,
                                                     keep_first=keep_first, 
                                                     keep_last=keep_last
                                                     )
-    # keep relevant columns
+    # keep relevant columns (columns_events_to_keep is a list of regex patterns)
     if columns_events_to_keep is not None:
-        col = [c for c in columns_events_to_keep if c in metadata_.columns]
+        col = [c for c in metadata_.columns
+               if any(re.search(pattern, c) for pattern in columns_events_to_keep)]
         metadata = metadata_[col]
     metadata = metadata.reset_index(drop=True)
     
