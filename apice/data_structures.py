@@ -1653,6 +1653,50 @@ class EpochsAPICE(mne.EpochsArray):
         return be_gfp
 
 
+    def define_bad_epochs_manual(self, bad_epochs, rejection_reason='manual', keeppre=True):
+        """Flag bad epochs using an arbitrary boolean vector.
+
+        Parameters
+        ----------
+        bad_epochs : array-like of bool
+            Boolean vector of length ``n_epochs``.  ``True`` marks an epoch
+            as bad.
+        rejection_reason : str, default='manual'
+            Label to record in ``rejection_reasons`` for each flagged epoch.
+            If an epoch was already flagged by another criterion, this label
+            is added to its existing reasons.
+        keeppre : bool, default=True
+            If True, keep previously rejected epochs.  If False, reset ``BE``
+            to only reflect this vector.
+
+        Returns
+        -------
+        bad_epochs : numpy.ndarray
+            Boolean vector (same as input, cast to ndarray).
+        """
+        bad_epochs = np.asarray(bad_epochs, dtype=bool)
+        n_epochs = len(self.artifacts.BE)
+        if bad_epochs.shape[0] != n_epochs:
+            raise ValueError(
+                f"bad_epochs length ({bad_epochs.shape[0]}) does not match "
+                f"number of epochs ({n_epochs})."
+            )
+
+        if keeppre:
+            self.artifacts.update_be(bad_epochs)
+        else:
+            self.artifacts.set_be(bad_epochs)
+
+        self._update_rejection_reasons(bad_epochs, rejection_reason, keeppre)
+
+        n_flagged = int(np.sum(bad_epochs))
+        print(f'\nManual epoch rejection ({rejection_reason!r})...')
+        print(f'--> Rejected epochs by this criterion: {n_flagged} out of {n_epochs} ({n_flagged / n_epochs:.1%})')
+        print(f'--> Total rejected epochs:             {int(np.sum(self.artifacts.BE))} out of {n_epochs} ({np.sum(self.artifacts.BE) / n_epochs:.1%})')
+
+        return bad_epochs
+
+
     def remove_bad_epochs(self, reasons=None):
         """Drop bad epochs and synchronize artifact matrices.
 
