@@ -12,59 +12,19 @@ APICE-Py is a modular and scalable EEG preprocessing pipeline built on top of [M
 
 ---
 
-## � What's New (branch `feature/major-update`)
+## Contents
 
-This branch contains a major update relative to `main` and will become version **0.2.0**. The changes below summarise the differences.
-
-### Artifact detection engine — complete rewrite
-
-The artifact detection system was redesigned from scratch to be simpler, more transparent and easier to extend:
-
-- Configurations are now built with `ArtifactsConfiguration`, which organises detection into named **algorithm groups** that run independently.
-- Each group iterates in a loop with an explicit `max_loops` ceiling. Looping stops early once the new rejection per pass falls below `min_rejection`, which is now computed automatically from the IQR threshold assuming a Gaussian distribution (`min_rejection_from_thresh`). This replaces the ad-hoc stopping criteria from the previous version.
-- New algorithms can be added to any group by calling `add_algorithm()` without touching existing code.
-- Bad channels (BC) and bad times (BT) are now derived from the bad-channel-time (BCT) matrix using `define_bcbt_functional`, a fixed-point iteration algorithm that alternates between updating BC and BT until convergence. This guarantees that every channel flagged as bad truly exceeds the threshold among non-bad time points, and vice versa — a consistency property that the previous multi-cycle approach did not guarantee.
-- A new `FlatChannel` detector was added — flat channels (zero or near-zero variance) were often missed by the previous correlation-based approach.
-- All detection results are stored in structured `Artifacts` matrices and round-trip correctly when loading/exporting `.fif` files (bug fixes for artifact import/export).
-
-### Default and custom configurations
-
-- Ready-made JSON configuration files are shipped inside `apice/default_cfg/` and are loaded automatically when no configuration is supplied.
-- Users can generate their own JSON configs by calling the functions in `apice/standard_conf.py` (e.g. `cfg_detect_artifacts_motion`, `cfg_detect_bad_channels`) with custom parameters, or by editing `script_create_custom_configuration.py`.
-- Artifact-detection configurations can also be built entirely from scratch in Python using `ArtifactsConfiguration` (`apice/artifacts_rejection.py`): call `add_algorithm_group()` to define groups and `add_algorithm()` to populate them, then export with `save_to_json()`.
-
-### ZapLine line-noise removal
-
-- A `ZapLine` class (`apice/filter.py`) implements the ZapLine spatial filter ([de Cheveigné 2020](https://doi.org/10.1016/j.neuroimage.2019.116356)) for removing line noise and its harmonics.
-
-### Parallelised spline interpolation
-
-- `correct_spline_segments` now supports three parallelisation modes controlled by `parallelize_mode`:
-  - `'channels'` — original behaviour (parallelise across channels).
-  - `'segments'` — parallelise across bad segments (faster for long recordings with many segments).
-  - `'auto'` — chooses the faster mode automatically.
-- For typical long EEG recordings, segment-level parallelisation roughly halves interpolation time.
-
-### ICA
-
-- A full ICA sub-pipeline was implemented (`apice/ica.py`):
-  1. Strong artifacts are detected first (`cfg_detect_artifacts_huge`) to avoid ICA being driven by outlier epochs.
-  2. ICA is fitted on the clean segments.
-  3. Artifactual components are identified automatically using the [mne-icalabel](https://mne.tools/mne-icalabel) classifier.
-- ICA is integrated into `run_preprocessing` via the `run_ica` parameter.
-
-### Ready-to-run pipeline scripts
-
-- `script_pipeline_preprocessing.py` — edit parameters at the top and run. Supports BIDS input (`input_dir_bids=True`), batch and new-files-only modes, and saves HTML reports, log files, per-step rejection summaries, and configuration snapshots — all controllable from the script parameters.
-- `script_pipeline_segmentation.py` — equivalent script for bulk epoching, evoked-response computation, and segmentation output.
-
-### BIDS format support
-
-- `run_preprocessing` can read directly from a BIDS dataset via `input_dir_bids=True` with optional filters for subject, session, task, run, and file extension.
-
-### ERP statistics
-
-- `compute_sme` (`apice/erp_statistics.py`) computes the Standard Measurement Error (SME) on `EpochsAPICE` objects.
+- [Features](#-features)
+- [What’s New (v0.2.0)](#-whats-new-v020)
+- [Installation](#installation)
+- [Sample Data](#-sample-data)
+- [Project Structure](#project-structure)
+- [Usage](#usage)
+- [Documentation](#-documentation)
+- [Citation](#-citation)
+- [Contributing](#-contributing)
+- [License](#-license)
+- [Acknowledgements](#-acknowledgements)
 
 ---
 
@@ -84,6 +44,21 @@ The artifact detection system was redesigned from scratch to be simpler, more tr
 - 🧾 Outputs summary tables using PrettyTable and Tabulate
 - 📊 Plots EEG data using Matplotlib and Seaborn
 - ✅ Python 3.12+ support
+
+---
+
+## 🆕 What’s New (v0.2.0)
+
+Key changes from v0.1.0:
+
+- **Artifact detection engine rewrite** — named algorithm groups, loop-based iteration with early stopping, new `FlatChannel` detector, fixed artifact import/export. → [pipeline docs §5–6](docs/pipeline.md#5-detection-algorithm-classes)
+- **Configurations** — default JSON configs in `apice/default_cfg/`; custom configs via `ArtifactsConfiguration` API. → [pipeline docs §6](docs/pipeline.md#6-configuration-and-execution)
+- **`define_bcbt_functional`** — fixed-point BC/BT derivation guaranteeing mutual consistency. → [pipeline docs §1.2](docs/pipeline.md#inferring-bad-channels-and-bad-times)
+- **ZapLine** — spatial line-noise filter (de Chevigné 2020) replacing classic notch.
+- **Parallelised spline interpolation** — three modes: `'channels'`, `'segments'`, `'auto'`.
+- **ICA sub-pipeline** — pre-ICA detection on a working copy, 1 Hz-filtered fit, automatic component labelling via [mne-icalabel](https://mne.tools/mne-icalabel). → [pipeline docs §1.3](docs/pipeline.md#13-ica-optional)
+- **Ready-to-run scripts** — `script_pipeline_preprocessing.py` and `script_pipeline_segmentation.py` with BIDS support.
+- **ERP statistics** — `compute_sme` computes the Standard Measurement Error (SME) on `EpochsAPICE` objects.
 
 ---
 
@@ -242,7 +217,8 @@ sme = compute_sme(epochs, ...)
 ---
 ## 📖 Documentation
 
-Click [here](https://zenodo.org/records/17151631) for the documentation (examples, customization guide, pipeline structure).
+- **[Pipeline documentation](docs/pipeline.md)** — conceptual overview of all processing steps (filtering, artifact detection, correction, segmentation) and a technical reference for all main classes, configuration files, and IO functions.
+- **[Published documentation](https://zenodo.org/records/17151631)** — examples and customisation guide for the published release (v0.1.0).
 
 ---
 ## 📖 Citation
