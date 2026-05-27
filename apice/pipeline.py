@@ -44,13 +44,13 @@ def run_preprocessing(input_dir,
                       bids_extension='.vhdr',
                       bids_datatype='eeg',
                       bids_suffix='eeg',
-                      processed_file_pattern='*-preproc.fif',
+                      processed_file_pattern='*-preproc-raw.fif',
                       data_selection_method="all",
                       drop_electrodes=None,
                       picks='eeg',
                       reference_channels=None,
                       crop_times=None,
-                      crop_from_beginnning=None,
+                      crop_from_beginning=None,
                       crop_from_end=None,
                       resample_freq=None,
                       stim_channels_to_annotations=True,
@@ -102,7 +102,7 @@ def run_preprocessing(input_dir,
         BIDS datatype selector.
     bids_suffix : str, default='eeg'
         BIDS suffix selector.
-    processed_file_pattern : str, default='*-preproc.fif'
+    processed_file_pattern : str, default='*-preproc-raw.fif'
         Pattern used to detect already processed outputs.
     data_selection_method : str | list[str], default='all'
         File-selection strategy forwarded to APICE I/O helpers.
@@ -114,7 +114,7 @@ def run_preprocessing(input_dir,
         Reference channels to preserve in artifact handling.
     crop_times : tuple[float, float] | None, default=None
         Optional ``(tmin, tmax)`` crop window in seconds.
-    crop_from_beginnning : float | None, default=None
+    crop_from_beginning : float | None, default=None
         Seconds to trim from the start of the recording.
     crop_from_end : float | None, default=None
         Seconds to trim from the end of the recording.
@@ -240,7 +240,7 @@ def run_preprocessing(input_dir,
                                         drop_electrodes=drop_electrodes,
                                         picks=picks,
                                         crop_times=crop_times,
-                                        crop_from_beginnning=crop_from_beginnning,
+                                        crop_from_beginning=crop_from_beginning,
                                         crop_from_end=crop_from_end,
                                         resample_freq=resample_freq,
                                         stim_channels_to_annotations=stim_channels_to_annotations,
@@ -501,7 +501,7 @@ def preprocess_initial_steps(raw,
                           drop_electrodes=None,
                           picks='eeg',
                           crop_times=None,
-                          crop_from_beginnning=None,
+                          crop_from_beginning=None,
                           crop_from_end=None,
                           resample_freq=None,
                           stim_channels_to_annotations=True,
@@ -534,7 +534,7 @@ def preprocess_initial_steps(raw,
         Channels to keep using MNE picking semantics.
     crop_times : tuple[float, float] | None, default=None
         Optional ``(tmin, tmax)`` crop window in seconds.
-    crop_from_beginnning : float | None, default=None
+    crop_from_beginning : float | None, default=None
         Seconds to trim from the beginning of the recording.
     crop_from_end : float | None, default=None
         Seconds to trim from the end of the recording.
@@ -666,8 +666,8 @@ def preprocess_initial_steps(raw,
     # CROP TIMES -----------------------------------------------------------------------------------------------
     if crop_times is not None:
         raw.crop(tmin=crop_times[0], tmax=crop_times[1])
-    if crop_from_beginnning is not None:
-            raw.crop(tmin=crop_from_beginnning, tmax=None)
+    if crop_from_beginning is not None:
+            raw.crop(tmin=crop_from_beginning, tmax=None)
     if crop_from_end is not None:
             raw.crop(tmin=0, tmax=raw.times[-1]-crop_from_end)    
 
@@ -749,7 +749,7 @@ def preprocess_initial_steps(raw,
             "drop_electrodes": drop_electrodes,
             "picks": picks,
             "crop_times": crop_times,
-            "crop_from_beginnning": crop_from_beginnning,
+            "crop_from_beginning": crop_from_beginning,
             "crop_from_end": crop_from_end,
             "resample_freq": resample_freq,
             "stim_channels_to_annotations": stim_channels_to_annotations,

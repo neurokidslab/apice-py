@@ -26,7 +26,7 @@ def main():
     # "new" to process only files that have not been processed yet (i.e., files that do not have a corresponding preprocessed file in the output directory), 
     # list of strings with file patterns use to select specific files (only valid if input_dir_bids=False, otherwise the BIDS file selection will be used)
     DATA_SELECTION_METHOD = "all"
-    PREPROCESSED_FILE_PATTERN = '*-preproc.fif'
+    PREPROCESSED_FILE_PATTERN = '*-preproc-raw.fif'
 
     # Whether to create and save an HTML report with the preprocessing steps and results.
     SAVE_REPORT = True
@@ -56,8 +56,8 @@ def main():
     # Time window to crop the data (e.g., to remove long periods of recording before and after the actual experiment). Set to None to not crop the data.
     CROP_TIMES = None
 
-    # Time to crop from the beggining of the recording (e.g., to remove long periods of recording before the actual experiment). Set to None to not crop from the beggining.
-    CROP_FROM_BEGGINNING = None
+    # Time to crop from the beginning of the recording (e.g., to remove long periods of recording before the actual experiment). Set to None to not crop from the beginning.
+    CROP_FROM_BEGINNING = None
 
     # Time to crop from the end of the recording (e.g., to remove long periods of recording after the actual experiment). Set to None to not crop from the end.
     CROP_FROM_END = None
@@ -144,7 +144,7 @@ def main():
         reference_channels=REFERENCE_CHANNELS,
         picks=PICKS,
         crop_times=CROP_TIMES,
-        crop_from_beginnning=CROP_FROM_BEGGINNING,
+        crop_from_beginning=CROP_FROM_BEGINNING,
         crop_from_end=CROP_FROM_END,
         resample_freq=RESAMPLE_FREQ,
         stim_channels_to_annotations=STIM_CHANNELS_TO_ANNOTATIONS,
