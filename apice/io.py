@@ -292,8 +292,10 @@ def get_bids_files_to_process(bids_root,
             }
             files_to_process = []
             for file in list_files:
+                # Use the BIDS filename stem (without source extension like .vhdr)
+                # so it matches preprocessed outputs such as `*-preproc.fif`.
                 expected_output_stem = Path(
-                    processed_file_pattern.replace("*", file.basename)
+                    processed_file_pattern.replace("*", Path(file.basename).stem)
                 ).stem
                 if expected_output_stem not in output_folder_files:
                     files_to_process.append(file)
