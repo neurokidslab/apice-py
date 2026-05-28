@@ -301,10 +301,11 @@ An epoch is flagged as bad (BE) if it fails **any** of the following criteria:
 | Artifact ratio | `bad_data` | 1.0 | Fraction of BCT entries that are True in the epoch |
 | Bad-time ratio | `bad_time` | 0 | Fraction of BT time points in the epoch |
 | Bad-channel ratio | `bad_channel` | 0.3 | Fraction of BC channels in the epoch |
-| Mahalanobis distance | `lim_dist` | 2.0 | Distance of the epoch's ERP from the average ERP (z-score units); flags epochs with an unusual topography |
+| Distance to evoked | `lim_dist` | 2.0 | Distance of the epoch's ERP from the average ERP (z-score units); flags epochs with an unusual topography |
 | Global Field Power | `lim_gfp` | 2.0 | Z-score of the epoch's mean GFP relative to all epochs; flags epochs with abnormally large responses |
 
 The first three criteria operate on artifact masks alone. The distance and GFP criteria operate on the EEG signal itself and can catch epochs that look clean by mask criteria but contain unusual waveforms (e.g., sporadic high-amplitude responses not captured by detection).
+The rejection reason(s) for each epoch are stored as a list in the attribute `rejection_reasons` in the artifacts structure.
 
 ---
 

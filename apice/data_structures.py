@@ -1437,8 +1437,8 @@ class EpochsAPICE(mne.EpochsArray):
                 
             # reject epochs having samples that are too far from the average    
             be = be_old.copy()
-            ok = False;
-            ci = 1;
+            ok = False
+            ci = 1
             be_dist = np.full(n_epochs, False)
             while (~ok and ci<=maxloops and np.any(be==0)):
                 
