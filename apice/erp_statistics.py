@@ -13,6 +13,7 @@ def compute_sme(
     roi=None,
     n_iter=1000,
     n_samples=None,
+    relative=False,
     random_state=None,
 ):
     """Compute the Standardized Measurement Error (SME) via bootstrapping.
@@ -64,6 +65,13 @@ def compute_sme(
         If ``None``, uses the number of trials in the condition (or the
         smaller condition for 'diff' mode is kept independent). Capped at the
         number of available trials per condition.
+    relative : bool
+        If ``True``, return the SME relative to the mean score (i.e., SME
+        divided by the absolute value of the mean x 100). Default is ``False``.
+        The mean score is computed on the original (non-resampled) data, so
+        this only affects the final scaling of the SME. The absolute value is
+        used in the denominator to avoid sign effects when the mean amplitude
+        is negative.
     random_state : int | numpy.random.Generator | None
         Seed or generator for reproducibility. Passed to
         ``numpy.random.default_rng()``.
@@ -71,9 +79,10 @@ def compute_sme(
     Returns
     -------
     sme : float | numpy.ndarray, shape (n_channels,)
-        Bootstrapped SME value(s). Returns a scalar ``float`` when ``roi`` is
-        set, or a ``numpy.ndarray`` of shape ``(n_channels,)`` when operating
-        in per-channel mode.
+        Bootstrapped SME value(s). If ``relative=True``, divided by the mean
+        score computed on the original (non-resampled) data. Returns a scalar
+        ``float`` when ``roi`` is set, or a ``numpy.ndarray`` of shape
+        ``(n_channels,)`` when operating in per-channel mode.
 
     Notes
     -----
@@ -243,6 +252,15 @@ def compute_sme(
 
     # SME = standard deviation of the bootstrap distribution (ddof=1)
     sme = M.std(axis=0, ddof=1)
+
+    # Relative SME: divide by the absolute mean score on the original data
+    # (absolute value avoids sign flip when the mean amplitude is negative)
+    if relative:
+        if diff_mode:
+            mean_score = scores1.mean(axis=0) - scores2.mean(axis=0)
+        else:
+            mean_score = scores1.mean(axis=0)
+        sme = 100 * (sme / np.abs(mean_score))
 
     # Return scalar for ROI mode (M was 1-D, std returns a 0-D array)
     if roi is not None:
