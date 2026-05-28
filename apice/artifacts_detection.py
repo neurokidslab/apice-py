@@ -68,7 +68,7 @@ class DetectionMethod:
         self.group_name = group_name
         self.verbose = verbose
         
-    def steps_pre_compute(self, raw):
+    def _steps_pre_compute(self, raw):
         """Apply preprocessing transformations before detection computation.
 
         Parameters
@@ -95,7 +95,7 @@ class DetectionMethod:
         
         return raw
     
-    def steps_post_compute(self, raw):
+    def _steps_post_compute(self, raw):
         """Restore original data scale after detection computation.
 
         Parameters
@@ -120,14 +120,14 @@ class DetectionMethod:
         
         return raw
         
-    def steps_pre_reject(self):
+    def _steps_pre_reject(self):
         """Log rejection parameters and begin rejection phase."""
         if self.verbose:
             print('Rejecting data based on the signal {}...'.format(self.name))
             for k in self.params_reject.keys():
                 print('-- {}: '.format(k), self.params_reject[k])
                 
-    def steps_post_reject(self, raw, bct, show_rej=None):
+    def _steps_post_reject(self, raw, bct, show_rej=None):
         """Apply masking, update artifact matrix, and log rejection statistics.
 
         Parameters
@@ -222,19 +222,19 @@ class Amplitude(DetectionMethod):
     def compute(self, raw):
         
         # steps before computation
-        raw = self.steps_pre_compute(raw)
+        raw = self._steps_pre_compute(raw)
         
         # Compute
         self._data = self.amplitude(raw)
         
         # steps after computation
-        raw = self.steps_post_compute(raw)
+        raw = self._steps_post_compute(raw)
         
 
     def reject(self, raw):
         
         # steps before rejection
-        self.steps_pre_reject()
+        self._steps_pre_reject()
         
         # Reject data 
         if self.params_reject['thresh_type']=='absolute':
@@ -254,7 +254,7 @@ class Amplitude(DetectionMethod):
                                           iq_half=iq_half)
         
         # steps after rejection
-        bct, raw = self.steps_post_reject(raw, bct, show_rej={'threshold':rl_sum+ru_sum})
+        bct, raw = self._steps_post_reject(raw, bct, show_rej={'threshold':rl_sum+ru_sum})
         
         return raw, bct
 
@@ -314,19 +314,19 @@ class RunningAverage(DetectionMethod):
     def compute(self, raw):
         
         # steps before computation
-        raw = self.steps_pre_compute(raw)
+        raw = self._steps_pre_compute(raw)
         
         # Compute
         self._data_fast, self._data_diff = self.runningaverage(raw, self.params_compute['fast_wind'], self.params_compute['slow_wind'])
         
         # steps after computation
-        raw = self.steps_post_compute(raw)
+        raw = self._steps_post_compute(raw)
         
      
     def reject(self, raw):
         
         # steps before rejection
-        self.steps_pre_reject()
+        self._steps_pre_reject()
         
         # Reject data 
         if self.params_reject['thresh_type']=='absolute':
@@ -361,7 +361,7 @@ class RunningAverage(DetectionMethod):
         # steps after rejection
         show_rej={'fast threshold':rl_sum_fast+ru_sum_fast,
                   'diff threshold':rl_sum_diff+ru_sum_diff}
-        bct, raw = self.steps_post_reject(raw, bct, show_rej=show_rej)
+        bct, raw = self._steps_post_reject(raw, bct, show_rej=show_rej)
     
         return raw, bct
             
@@ -473,19 +473,19 @@ class TimeVariance(DetectionMethod):
     def compute(self, raw):
         
         # steps before computation
-        raw = self.steps_pre_compute(raw)
+        raw = self._steps_pre_compute(raw)
         
         # Compute
         self._data = self.timevariance(raw, self.params_compute['time_window'], self.params_compute['time_window_step'])
         
         # steps after computation
-        raw = self.steps_post_compute(raw)
+        raw = self._steps_post_compute(raw)
         
 
     def reject(self, raw):
         
         # steps before rejection
-        self.steps_pre_reject()
+        self._steps_pre_reject()
         
         # Reject data 
         if self.params_reject['thresh_type']=='absolute':
@@ -504,7 +504,7 @@ class TimeVariance(DetectionMethod):
         # steps after rejection
         show_rej={'lower threshold':rl_sum,
                   'upper threshold':ru_sum}
-        bct, raw = self.steps_post_reject(raw, bct, show_rej=show_rej)
+        bct, raw = self._steps_post_reject(raw, bct, show_rej=show_rej)
     
         return raw, bct
     
@@ -600,19 +600,19 @@ class MaxChange(DetectionMethod):
     def compute(self, raw):
         
         # steps before computation
-        raw = self.steps_pre_compute(raw)
+        raw = self._steps_pre_compute(raw)
         
         # Compute
         self._data = maxchange(raw, self.params_compute['time_window'], self.params_compute['time_window_step'])
         
         # steps after computation
-        raw = self.steps_post_compute(raw)
+        raw = self._steps_post_compute(raw)
         
 
     def reject(self, raw):
         
         # steps before rejection
-        self.steps_pre_reject()
+        self._steps_pre_reject()
         
         # Reject data 
         if self.params_reject['thresh_type']=='absolute':
@@ -630,7 +630,7 @@ class MaxChange(DetectionMethod):
         # steps after rejection
         show_rej={'lower threshold':rl_sum,
                   'upper threshold':ru_sum}
-        bct, raw = self.steps_post_reject(raw, bct, show_rej=show_rej)
+        bct, raw = self._steps_post_reject(raw, bct, show_rej=show_rej)
         
         return raw, bct
     
@@ -693,26 +693,26 @@ class CrossElectrodesOutlier(DetectionMethod):
     def compute(self, raw):
         
         # steps before computation
-        raw = self.steps_pre_compute(raw)
+        raw = self._steps_pre_compute(raw)
         
         # Compute
         self._data = self.acrosselectrodesoutlier(raw, self.params_compute['time_window'], self.params_compute['time_window_step'])
         
         # steps after computation
-        raw = self.steps_post_compute(raw)
+        raw = self._steps_post_compute(raw)
         
         
     def reject(self, raw):
         
         # steps before rejection
-        self.steps_pre_reject()
+        self._steps_pre_reject()
         
         
         # Reject data 
         bct, rl_sum, ru_sum = reject_data(self._data.copy(), raw, self.params_reject['thresh'], rejection='absolute')
         
         # steps after rejection
-        bct, raw = self.steps_post_reject(raw, bct, show_rej={'threshold': ru_sum})
+        bct, raw = self._steps_post_reject(raw, bct, show_rej={'threshold': ru_sum})
         
         return raw, bct
     
@@ -820,19 +820,19 @@ class Power(DetectionMethod):
     def compute(self, raw):
         
         # steps before computation
-        raw = self.steps_pre_compute(raw)
+        raw = self._steps_pre_compute(raw)
         
         # Compute
         self._data = self.powerperband(raw, self.params_compute['time_window'], self.params_compute['time_window_step'], self.params_compute['freq_band'])
         
         # steps after computation
-        raw = self.steps_post_compute(raw)
+        raw = self._steps_post_compute(raw)
         
 
     def reject(self, raw):
         
         # steps before rejection
-        self.steps_pre_reject()
+        self._steps_pre_reject()
         
         # Reject data 
         transform=None
@@ -847,7 +847,7 @@ class Power(DetectionMethod):
         # steps after rejection
         show_rej={'lower threshold':rl_sum,
                   'upper threshold':ru_sum}
-        bct, raw = self.steps_post_reject(raw, bct, show_rej=show_rej)
+        bct, raw = self._steps_post_reject(raw, bct, show_rej=show_rej)
         
         return raw, bct
 
@@ -944,19 +944,19 @@ class ChannelCorr(DetectionMethod):
     def compute(self, raw):
         
         # steps before computation
-        raw = self.steps_pre_compute(raw)
+        raw = self._steps_pre_compute(raw)
         
         # Compute
         self._data = self.chennelscorr(raw, self.params_compute['time_window'], self.params_compute['time_window_step'], self.params_compute['top_channel_corr'])
         
         # steps after computation
-        raw = self.steps_post_compute(raw)
+        raw = self._steps_post_compute(raw)
         
 
     def reject(self, raw):
         
         # steps before rejection
-        self.steps_pre_reject()
+        self._steps_pre_reject()
         
         # Reject data 
         thresh = [self.params_reject['thresh'], None]
@@ -968,7 +968,7 @@ class ChannelCorr(DetectionMethod):
                                           )
         
         # steps after rejection
-        bct, raw = self.steps_post_reject(raw, bct, show_rej={'lower threshold': rl_sum})
+        bct, raw = self._steps_post_reject(raw, bct, show_rej={'lower threshold': rl_sum})
         
         return raw, bct
 
@@ -1062,7 +1062,7 @@ class FlatChannel(DetectionMethod):
     def compute(self, raw):
         
         # steps before computation
-        raw = self.steps_pre_compute(raw)
+        raw = self._steps_pre_compute(raw)
         
         # Compute
         self._data = self.flatchannel(raw, self.params_compute['time_window'], 
@@ -1070,13 +1070,13 @@ class FlatChannel(DetectionMethod):
                                       self.params_compute['min_change'])
         
         # steps after computation
-        raw = self.steps_post_compute(raw)
+        raw = self._steps_post_compute(raw)
         
 
     def reject(self, raw):
         
         # steps before rejection
-        self.steps_pre_reject()
+        self._steps_pre_reject()
         
         # Reject data 
         thresh = [None, self.params_reject['thresh']]
@@ -1088,7 +1088,7 @@ class FlatChannel(DetectionMethod):
                                           )
         
         # steps after rejection
-        bct, raw = self.steps_post_reject(raw, bct, show_rej={'lower threshold': rl_sum})
+        bct, raw = self._steps_post_reject(raw, bct, show_rej={'lower threshold': rl_sum})
         
         return raw, bct
 
@@ -1161,14 +1161,14 @@ class ModifyRejection:
         self.verbose = verbose
 
 
-    def steps_pre_reject(self):
+    def _steps_pre_reject(self):
                 
         if self.verbose:
             print('Modifying rejection matrix by {}...'.format(self.name))
             for k in self.params.keys():
                 print('-- {}: '.format(k), self.params[k])
 
-    def steps_post_reject(self, bct, raw, change_to=1):
+    def _steps_post_reject(self, bct, raw, change_to=1):
         
         # keep some info
         n = np.size(bct)
@@ -1211,13 +1211,13 @@ class Mask(ModifyRejection):
     def reject(self, raw):
         
         # steps before rejection
-        self.steps_pre_reject()
+        self._steps_pre_reject()
         
         # Mask rejection matrix
         bct = self.apply_mask(raw, self.params['mask_length'])
           
         # steps after rejection
-        bct, raw = self.steps_post_reject(bct, raw)
+        bct, raw = self._steps_post_reject(bct, raw)
         
         return raw, bct
 
@@ -1263,13 +1263,13 @@ class ShortGoodSegments(ModifyRejection):
     def reject(self, raw):
         
         # steps before rejection
-        self.steps_pre_reject()
+        self._steps_pre_reject()
         
         # Reject short good segments
         bct = self.apply_rejection_short_good(raw, self.params['time_limit'])
                    
         # steps after rejection
-        bct, raw = self.steps_post_reject(bct, raw)
+        bct, raw = self._steps_post_reject(bct, raw)
         
         return raw, bct
 
@@ -1319,13 +1319,13 @@ class ShortBadSegments(ModifyRejection):
     def reject(self, raw):
         
         # steps before rejection
-        self.steps_pre_reject()
+        self._steps_pre_reject()
         
         # Keep short bad segments
         include_segments = self.apply_include_short_bad(raw, self.params['time_limit'])
                    
         # steps after rejection
-        bct, raw = self.steps_post_reject(include_segments, raw, change_to=0)
+        bct, raw = self._steps_post_reject(include_segments, raw, change_to=0)
         
         return raw, include_segments     
 

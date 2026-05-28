@@ -420,10 +420,6 @@ All detection algorithms are in `apice/artifacts_detection.py` and inherit from 
 |--------|-----------|-------------|
 | `compute(raw)` | `run_algorithms` (once per group) | Computes and caches the feature matrix |
 | `reject(raw)` | `run_algorithms` (each loop iteration) | Applies threshold; returns `(raw, bct)` |
-| `steps_pre_compute(raw)` | `compute` | Optional referencing, z-scoring, masking |
-| `steps_post_compute(raw)` | `compute` | Restores data to pre-processing state |
-| `steps_pre_reject()` | `reject` | Prepares rejection parameters |
-| `steps_post_reject(raw, bct)` | `reject` | Applies temporal masks, logs results, optionally updates `raw.artifacts.BCT` |
 
 **Detection classes:**
 
