@@ -209,12 +209,7 @@ class ZapLine:
         evals, M = evals[idx], M[:, idx]
         
         # Use the Z-score logic from before
-        ratios = evals[:-1] / np.maximum(evals[1:], 1e-12)
-        med = np.median(ratios[int(len(ratios)*0.3):])
-        mad = np.median(np.abs(ratios - med)) + 1e-6
-        thresh = med + (3.0 * (mad / 0.6745))
-        candidates = np.where(ratios[:int(len(evals)*0.15)] > thresh)[0]
-        n_rem = candidates[-1] + 1 if len(candidates) > 0 else 0
+        n_rem = ZapLine._find_n_remove(evals)
         
         M_inv = linalg.pinv(M)
         D = np.dot(M[:, n_rem:], M_inv[n_rem:, :])
