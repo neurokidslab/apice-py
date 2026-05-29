@@ -78,7 +78,7 @@ def cfg_bad_epochs(bad_data=1.00, bad_time=0, bad_channel=0.30, lim_dist=2, lim_
 
 
 def cfg_define_bcbt_epochs(bcbt_method='functional', thresh_bad_channels=0.10,
-                            thresh_bad_times=0.30, min_good_time=1.000,
+                            thresh_bad_times=0.30, min_good_time=0.100,
                             min_bad_time=0.100, mask_time=0, filename=None):
     cfg = {}
     cfg['bcbt_method'] = bcbt_method

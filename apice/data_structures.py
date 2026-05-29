@@ -858,6 +858,8 @@ class EpochsAPICE(mne.EpochsArray):
         if not isinstance(epochs, BaseEpochs):
             raise TypeError(f"Expected a BaseEpochs instance, got {type(epochs)}")
 
+        print('Initializing EpochsAPICE...')
+
         # Ensure data is loaded
         epochs.load_data()
         data = epochs.get_data().copy()  # (n_epochs, n_channels, n_times)

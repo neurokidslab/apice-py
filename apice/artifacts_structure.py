@@ -585,6 +585,16 @@ class Artifacts:
                  thresh_bad_channels=0.30, thresh_bad_times=0.30, 
                  min_good_time=0, min_bad_time=0, mask_time=0, bcbt_method='functional'):
 
+        # check the validity of the parameters
+        data_time = obj.times[-1] - obj.times[0]
+        if min_good_time < 0 or min_good_time >= data_time:
+            raise ValueError(
+                f"min_good_time must be between 0 and the total data duration ({data_time:.2f} s), got {min_good_time}."
+            )
+        if min_bad_time < 0 or min_bad_time > data_time:
+            raise ValueError(
+                f"min_bad_time must be between 0 and the total data duration ({data_time:.2f} s), got {min_bad_time}."
+            )
         if bcbt_method not in ('functional', 'fix'):
             raise ValueError(
                 f"bcbt_method must be 'functional' or 'fix', got {bcbt_method!r}."
@@ -616,8 +626,10 @@ class Artifacts:
         if not isinstance(obj, (mne.io.BaseRaw, base_epochs_type)):
             raise ValueError("The object must be an instance of mne.io.Raw or mne.Epochs.")
         
+        # Get data dimensions
         n_channels, n_samples, n_epochs = get_data_size(obj)
 
+        # Initialize artifact matrices based on the type of the input object.
         if isinstance(obj, mne.io.BaseRaw):
             artifacts_types = {
                 'BCT': np.full((n_channels, n_samples), False),  # Bad Channel Time
