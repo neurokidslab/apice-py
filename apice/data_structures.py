@@ -23,6 +23,9 @@ from apice.artifacts_rejection import run_algorithms
 from apice.artifacts_correction import (TargetPCA, ChannelsSphericalSplineInterpolation, SegmentSphericalSplineInterpolation)
 
 
+def _error_if_chnage_data_shape():
+    """Helper to prevent in-place data shape changes that would break artifact masks."""
+    raise RuntimeError("Methods that modify the _data shape directly are not allowed in RawAPICE or EpochsAPICE. Use RawAPICE.to_mne_raw() to convert to a standard MNE Raw object, apply modifications, and then wrap it back into RawAPICE.")
 
 
 # %% CLASSES TO MANIPULATE THE RAW AND EPOCH DATA WITH THE ARTIFACTS REJECTION MATRICES
@@ -725,6 +728,26 @@ class RawAPICE(mne.io.RawArray):
                 self.artifacts.BCT[idx_reference_channels, :] = False
                 self.artifacts.BCT[idx_reference_channels, self.artifacts.BT[0,:]] = True
 
+    def add_channels():
+        _error_if_chnage_data_shape()
+    def add_reference_channels():
+        _error_if_chnage_data_shape()
+    def crop():
+        _error_if_chnage_data_shape()
+    def crop_by_annotations():
+        _error_if_chnage_data_shape()
+    def drop_channels():
+        _error_if_chnage_data_shape()
+    def pick():
+        _error_if_chnage_data_shape()
+    def pick_channels():
+        _error_if_chnage_data_shape()
+    def pick_types():
+        _error_if_chnage_data_shape()
+    def reorder_channels():
+        _error_if_chnage_data_shape()
+    def resample():
+        _error_if_chnage_data_shape()
 
 # %% UTILITY FUNCTIONS FOR EPOCHS
 
