@@ -1407,8 +1407,13 @@ def segment_default_pipeline(raw,
     # Add epochs artifacts matrix
     if report is not None:
         try:
-            fig = epochs.plot_artifact_structure(color_scheme='jet')
-            report.add_figure(fig, "Artifacts Matrix", section="Epochs All", replace=True)
+            fig = epochs.plot_artifact_structure(color_scheme='jet', artifact='BCT')
+            report.add_figure(fig, "Artifacts Matrix (BCT)", section="Epochs All", replace=True)
+        except Exception as e:
+            print(f"Warning: Could not add epochs artifacts matrix to report: {e}")
+        try:
+            fig = epochs.plot_artifact_structure(color_scheme='jet', artifact='all')
+            report.add_figure(fig, "Artifacts Matrix (all)", section="Epochs All", replace=True)
         except Exception as e:
             print(f"Warning: Could not add epochs artifacts matrix to report: {e}")
 

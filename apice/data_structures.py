@@ -1270,9 +1270,9 @@ class EpochsAPICE(mne.EpochsArray):
             Updates ``self.artifacts.BE`` in place.
         """
         self.define_bad_epochs_artifacts(bad_data=bad_data, bad_time=bad_time, bad_channel=bad_channel, keeppre=False)
-        if lim_dist:
+        if lim_dist is not None:
             self.define_bad_epochs_dist(lim_dist=lim_dist, keeppre=True)
-        if lim_gfp:
+        if lim_gfp is not None:
             self.define_bad_epochs_gfp(lim_gfp=lim_gfp, keeppre=True)
 
     def _update_rejection_reasons(self, be_vector, reason, keeppre):
