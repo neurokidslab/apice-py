@@ -1,4 +1,5 @@
-from apice.pipeline import run_segmentation  
+from apice.pipeline import run_segmentation
+from apice.standard_conf import cfg_bad_epochs, cfg_define_bcbt_epochs  
 
 def main():
 
@@ -70,9 +71,9 @@ def main():
     EVOKED_BY = ["animal"]
 
     # Configuration parameters for specific segmentation steps (e.g., defining BCBT epochs, spline interpolation, etc.). Set to None to apply the default configuration.
-    CFG_DEFINE_BCBT_EPOCHS = None
+    CFG_DEFINE_BCBT_EPOCHS = cfg_define_bcbt_epochs(thresh_bad_channels=0.10, thresh_bad_times=0.30, min_good_time=0.100, min_bad_time=0.100, mask_time=0)
     CFG_SPLINE_CHANNELS = None
-    CFG_BAD_EPOCHS = None
+    CFG_BAD_EPOCHS = cfg_bad_epochs(bad_data=1.00, bad_time=0, bad_channel=0.30, lim_dist=2, lim_gfp=2)
 
     # Number of parallel jobs to run for computationally intensive steps (e.g., bad channels detection, artifacts detection, etc.). Set to -1 to use all available cores.
     N_JOBS = -1
