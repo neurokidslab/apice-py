@@ -58,8 +58,12 @@ def compute_sme(
         Channel names defining a region of interest. When set, data are first
         averaged across those channels and a single scalar SME is returned.
         When ``None`` (default), a per-channel SME array is returned.
-    n_iter : int
-        Number of bootstrap iterations. Default is 1000.
+    n_iter : int | None
+        Number of bootstrap iterations. Default is 1000. If ``None``, the
+        SME is computed analytically as ``SD / sqrt(N)`` for 'mean' mode, or
+        ``sqrt(SD1² / N1 + SD2² / N2)`` for 'diff' mode, where SD is the
+        standard deviation of per-trial scores and N is the number of trials.
+        This is equivalent to the standard error of the mean.
     n_samples : int | None
         Number of trials to draw (with replacement) per bootstrap iteration.
         If ``None``, uses the number of trials in the condition (or the
@@ -168,8 +172,8 @@ def compute_sme(
             f"roi must be a list of channel names or None, got {type(roi)}."
         )
 
-    if n_iter < 1:
-        raise ValueError(f"n_iter must be >= 1, got {n_iter}.")
+    if n_iter is not None and n_iter < 1:
+        raise ValueError(f"n_iter must be >= 1 or None, got {n_iter}.")
 
     # ------------------------------------------------------------------
     # Select epochs per condition
@@ -212,46 +216,54 @@ def compute_sme(
         )
 
     # ------------------------------------------------------------------
-    # Pre-compute trial indices (outside the loop — fixes MATLAB efficiency
-    # issue where find(cond) was recomputed on every iteration)
+    # SME computation: analytic or bootstrap
     # ------------------------------------------------------------------
-    idx1 = np.arange(n_trials1)
-    if diff_mode:
-        idx2 = np.arange(n_trials2)
-
-    # ------------------------------------------------------------------
-    # Bootstrap
-    # ------------------------------------------------------------------
-    rng = np.random.default_rng(random_state)
-
-    if roi is not None:
-        # Scalar per iteration → M shape (n_iter,)
-        M = np.empty(n_iter)
-        for i in range(n_iter):
-            sample1 = rng.choice(idx1, size=n_s1, replace=True)
-            m1 = scores1[sample1].mean()
-            if diff_mode:
-                sample2 = rng.choice(idx2, size=n_s2, replace=True)
-                m2 = scores2[sample2].mean()
-                M[i] = m1 - m2
-            else:
-                M[i] = m1
+    if n_iter is None:
+        # Analytic SME: standard error of the mean (SD / sqrt(N))
+        if diff_mode:
+            sme = np.sqrt(
+                scores1.var(axis=0, ddof=1) / n_trials1
+                + scores2.var(axis=0, ddof=1) / n_trials2
+            )
+        else:
+            sme = scores1.std(axis=0, ddof=1) / np.sqrt(n_trials1)
     else:
-        # Vector per iteration → M shape (n_iter, n_channels)
-        n_channels = scores1.shape[1]
-        M = np.empty((n_iter, n_channels))
-        for i in range(n_iter):
-            sample1 = rng.choice(idx1, size=n_s1, replace=True)
-            m1 = scores1[sample1].mean(axis=0)  # (n_channels,)
-            if diff_mode:
-                sample2 = rng.choice(idx2, size=n_s2, replace=True)
-                m2 = scores2[sample2].mean(axis=0)  # (n_channels,)
-                M[i] = m1 - m2
-            else:
-                M[i] = m1
+        # Pre-compute trial indices (outside the loop — fixes MATLAB
+        # efficiency issue where find(cond) was recomputed every iteration)
+        idx1 = np.arange(n_trials1)
+        if diff_mode:
+            idx2 = np.arange(n_trials2)
 
-    # SME = standard deviation of the bootstrap distribution (ddof=1)
-    sme = M.std(axis=0, ddof=1)
+        rng = np.random.default_rng(random_state)
+
+        if roi is not None:
+            # Scalar per iteration → M shape (n_iter,)
+            M = np.empty(n_iter)
+            for i in range(n_iter):
+                sample1 = rng.choice(idx1, size=n_s1, replace=True)
+                m1 = scores1[sample1].mean()
+                if diff_mode:
+                    sample2 = rng.choice(idx2, size=n_s2, replace=True)
+                    m2 = scores2[sample2].mean()
+                    M[i] = m1 - m2
+                else:
+                    M[i] = m1
+        else:
+            # Vector per iteration → M shape (n_iter, n_channels)
+            n_channels = scores1.shape[1]
+            M = np.empty((n_iter, n_channels))
+            for i in range(n_iter):
+                sample1 = rng.choice(idx1, size=n_s1, replace=True)
+                m1 = scores1[sample1].mean(axis=0)  # (n_channels,)
+                if diff_mode:
+                    sample2 = rng.choice(idx2, size=n_s2, replace=True)
+                    m2 = scores2[sample2].mean(axis=0)  # (n_channels,)
+                    M[i] = m1 - m2
+                else:
+                    M[i] = m1
+
+        # SME = standard deviation of the bootstrap distribution (ddof=1)
+        sme = M.std(axis=0, ddof=1)
 
     # Relative SME: divide by the absolute mean score on the original data
     # (absolute value avoids sign flip when the mean amplitude is negative)
