@@ -865,9 +865,9 @@ class Power(DetectionMethod):
         powerband_tw[:] = np.nan
 
         # compute
-        # raw_mne = raw.to_mne_raw(annotate_channels=False, annotate_times=False, annotate_data=False, annotate_corrected=False)
+        raw_mne = raw.to_mne_raw(annotate_channels=False, annotate_times=False, annotate_data=False, annotate_corrected=False)
         for i in range(n_tw):
-            dat = raw.copy().crop(tmin=raw.times[i_t[0,i]], tmax=raw.times[i_t[-1,i]], verbose='ERROR')
+            dat = raw_mne.copy().crop(tmin=raw.times[i_t[0,i]], tmax=raw.times[i_t[-1,i]], verbose='ERROR')
             spc = dat.compute_psd(method='multitaper', fmin=freq_band[0], fmax=freq_band[1], verbose='ERROR')
             p = spc.get_data()
             if len(np.shape(raw._data))==2:

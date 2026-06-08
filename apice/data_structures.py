@@ -23,10 +23,18 @@ from apice.artifacts_rejection import run_algorithms
 from apice.artifacts_correction import (TargetPCA, ChannelsSphericalSplineInterpolation, SegmentSphericalSplineInterpolation)
 
 
-def _error_if_chnage_data_shape():
+def _error_if_change_data_shape():
     """Helper to prevent in-place data shape changes that would break artifact masks."""
     raise RuntimeError("Methods that modify the _data shape directly are not allowed in RawAPICE or EpochsAPICE. Use RawAPICE.to_mne_raw() to convert to a standard MNE Raw object, apply modifications, and then wrap it back into RawAPICE.")
 
+def _warning_if_change_data_shape():
+    """Warn that APICE wrappers do not support MNE-style in-place shape changes."""
+    print(
+        "Warning: unlike the corresponding MNE Raw methods, APICE wrappers do not "
+        "apply data-shape changes in place. Shape-changing operations would break "
+        "the artifact masks, so they are routed through RawAPICE.to_mne_raw() or "
+        "left unimplemented until the masks can be transferred safely."
+    )
 
 # %% CLASSES TO MANIPULATE THE RAW AND EPOCH DATA WITH THE ARTIFACTS REJECTION MATRICES
 
@@ -703,7 +711,8 @@ class RawAPICE(mne.io.RawArray):
         raw_noart : mne.io.RawArray
             MNE raw object containing data and annotations only.
         """
-        self.annotate_bads(channels=annotate_channels, times=annotate_times, data=annotate_data, corrected=annotate_corrected)
+        if any([annotate_channels, annotate_times, annotate_data, annotate_corrected]):
+            self.annotate_bads(channels=annotate_channels, times=annotate_times, data=annotate_data, corrected=annotate_corrected)
         raw_noart = mne.io.RawArray(self._data.copy(), self.info.copy(), self.first_samp, verbose="WARNING")
         raw_noart.set_annotations(self.annotations.copy())
         raw_noart._projector = self._projector  # Copy projectors if any
@@ -728,26 +737,75 @@ class RawAPICE(mne.io.RawArray):
                 self.artifacts.BCT[idx_reference_channels, :] = False
                 self.artifacts.BCT[idx_reference_channels, self.artifacts.BT[0,:]] = True
 
-    def add_channels():
-        _error_if_chnage_data_shape()
-    def add_reference_channels():
-        _error_if_chnage_data_shape()
-    def crop():
-        _error_if_chnage_data_shape()
-    def crop_by_annotations():
-        _error_if_chnage_data_shape()
-    def drop_channels():
-        _error_if_chnage_data_shape()
-    def pick():
-        _error_if_chnage_data_shape()
-    def pick_channels():
-        _error_if_chnage_data_shape()
-    def pick_types():
-        _error_if_chnage_data_shape()
-    def reorder_channels():
-        _error_if_chnage_data_shape()
-    def resample():
-        _error_if_chnage_data_shape()
+    def add_channels(self, *args, **kwargs):
+        _warning_if_change_data_shape()
+        params_bcbt = self.artifacts.params.copy()
+        raw = self.to_mne_raw()
+        raw.add_channels(*args, **kwargs)
+        return RawAPICE(raw, **params_bcbt)
+    
+    def add_reference_channels(self, *args, **kwargs):
+        _warning_if_change_data_shape()
+        params_bcbt = self.artifacts.params.copy()
+        raw = self.to_mne_raw()
+        raw.add_reference_channels(*args, **kwargs)
+        return RawAPICE(raw, **params_bcbt)
+
+    def crop(self, *args, **kwargs):
+        _warning_if_change_data_shape()
+        params_bcbt = self.artifacts.params.copy()
+        raw = self.to_mne_raw()
+        raw.crop(*args, **kwargs)
+        return RawAPICE(raw, **params_bcbt)
+
+    def crop_by_annotations(self, *args, **kwargs):
+        _warning_if_change_data_shape()
+        params_bcbt = self.artifacts.params.copy()
+        raw = self.to_mne_raw()
+        raw.crop_by_annotations(*args, **kwargs)
+        return RawAPICE(raw, **params_bcbt)
+
+    def drop_channels(self, *args, **kwargs):
+        _warning_if_change_data_shape()
+        params_bcbt = self.artifacts.params.copy()
+        raw = self.to_mne_raw()
+        raw.drop_channels(*args, **kwargs)
+        return RawAPICE(raw, **params_bcbt)
+
+    def pick(self, *args, **kwargs):
+        _warning_if_change_data_shape()
+        params_bcbt = self.artifacts.params.copy()
+        raw = self.to_mne_raw()
+        raw.pick(*args, **kwargs)
+        return RawAPICE(raw, **params_bcbt)
+
+    def pick_channels(self, *args, **kwargs):
+        _warning_if_change_data_shape()
+        params_bcbt = self.artifacts.params.copy()
+        raw = self.to_mne_raw()
+        raw.pick_channels(*args, **kwargs)
+        return RawAPICE(raw, **params_bcbt)
+
+    def pick_types(self, *args, **kwargs):
+        _warning_if_change_data_shape()
+        params_bcbt = self.artifacts.params.copy()
+        raw = self.to_mne_raw()
+        raw.pick_types(*args, **kwargs)
+        return RawAPICE(raw, **params_bcbt)
+
+    def reorder_channels(self, *args, **kwargs):
+        _warning_if_change_data_shape()
+        params_bcbt = self.artifacts.params.copy()
+        raw = self.to_mne_raw()
+        raw.reorder_channels(*args, **kwargs)
+        return RawAPICE(raw, **params_bcbt)
+
+    def resample(self, *args, **kwargs):
+        _warning_if_change_data_shape()
+        params_bcbt = self.artifacts.params.copy()
+        raw = self.to_mne_raw()
+        raw.resample(*args, **kwargs)
+        return RawAPICE(raw, **params_bcbt)
 
 # %% UTILITY FUNCTIONS FOR EPOCHS
 

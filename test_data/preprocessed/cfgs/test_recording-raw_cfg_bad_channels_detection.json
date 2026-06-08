@@ -46,8 +46,19 @@
                 "position": 3,
                 "class_name": "ShortGoodSegments",
                 "parameters": {
-                    "time_limit": 2,
+                    "time_limit": 5,
                     "name": "ShortGoodSegments_3",
+                    "group_name": "bad_channels_basic",
+                    "update_artifacts": true
+                },
+                "post_detection": true
+            },
+            "ShortBadSegments_4": {
+                "position": 4,
+                "class_name": "ShortBadSegments",
+                "parameters": {
+                    "time_limit": 0.5,
+                    "name": "ShortBadSegments_4",
                     "group_name": "bad_channels_basic",
                     "update_artifacts": true
                 },
@@ -59,7 +70,7 @@
         "position": 2,
         "min_loops": 0,
         "max_loops": 5,
-        "min_rejection": 0.089,
+        "min_rejection": 0.00012,
         "define_bcbt": true,
         "algorithms": {
             "PowerHighFreq": {
@@ -77,7 +88,7 @@
                     ],
                     "thresh": [
                         null,
-                        2
+                        3
                     ],
                     "remove_bct": true,
                     "remove_bt": true,
@@ -104,7 +115,7 @@
                     ],
                     "thresh": [
                         null,
-                        2
+                        3
                     ],
                     "remove_bct": true,
                     "remove_bt": true,
@@ -129,7 +140,7 @@
                 "position": 1,
                 "class_name": "ShortGoodSegments",
                 "parameters": {
-                    "time_limit": 10,
+                    "time_limit": 1,
                     "name": "ShortGoodSegments_1",
                     "group_name": "bad_channels_modify",
                     "update_artifacts": true

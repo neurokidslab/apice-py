@@ -66,7 +66,7 @@
                     "thresh_type": "outliers_per_channel",
                     "thresh": [
                         null,
-                        3.0
+                        4
                     ],
                     "time_window": 0.5,
                     "time_window_step": 0.1,
@@ -80,23 +80,45 @@
                 },
                 "post_detection": false
             },
-            "ShortGoodSegments_3": {
+            "ShortBadSegments_3": {
                 "position": 3,
-                "class_name": "ShortGoodSegments",
+                "class_name": "ShortBadSegments",
                 "parameters": {
-                    "time_limit": 1.0,
-                    "name": "ShortGoodSegments_3",
+                    "time_limit": 0.1,
+                    "name": "ShortBadSegments_3",
                     "group_name": "huge_artifacts",
                     "update_artifacts": true
                 },
                 "post_detection": true
             },
-            "Mask_4": {
+            "ShortGoodSegments_4": {
                 "position": 4,
+                "class_name": "ShortGoodSegments",
+                "parameters": {
+                    "time_limit": 0.5,
+                    "name": "ShortGoodSegments_4",
+                    "group_name": "huge_artifacts",
+                    "update_artifacts": true
+                },
+                "post_detection": true
+            },
+            "Mask_5": {
+                "position": 5,
                 "class_name": "Mask",
                 "parameters": {
-                    "mask_length": 0.5,
-                    "name": "Mask_4",
+                    "mask_length": 0.2,
+                    "name": "Mask_5",
+                    "group_name": "huge_artifacts",
+                    "update_artifacts": true
+                },
+                "post_detection": true
+            },
+            "ShortGoodSegments_6": {
+                "position": 6,
+                "class_name": "ShortGoodSegments",
+                "parameters": {
+                    "time_limit": 0.5,
+                    "name": "ShortGoodSegments_6",
                     "group_name": "huge_artifacts",
                     "update_artifacts": true
                 },

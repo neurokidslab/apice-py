@@ -31,7 +31,7 @@
         "position": 2,
         "min_loops": 0,
         "max_loops": 5,
-        "min_rejection": 0.089,
+        "min_rejection": 0.00023,
         "define_bcbt": true,
         "algorithms": {
             "ArtifactsAmplitude": {
@@ -43,8 +43,8 @@
                     "do_zscore": false,
                     "thresh_type": "outliers_per_channel",
                     "thresh": [
-                        -2,
-                        2
+                        -3,
+                        3
                     ],
                     "mask": 0,
                     "remove_bct": true,
@@ -62,7 +62,7 @@
         "position": 3,
         "min_loops": 0,
         "max_loops": 5,
-        "min_rejection": 0.089,
+        "min_rejection": 0.00012,
         "define_bcbt": true,
         "algorithms": {
             "MaxChange500ms": {
@@ -75,7 +75,7 @@
                     "thresh_type": "outliers_per_channel",
                     "thresh": [
                         null,
-                        2.0
+                        3
                     ],
                     "time_window": 0.5,
                     "time_window_step": 0.1,
@@ -95,7 +95,7 @@
         "position": 4,
         "min_loops": 0,
         "max_loops": 5,
-        "min_rejection": 0.089,
+        "min_rejection": 0.00012,
         "define_bcbt": true,
         "algorithms": {
             "MaxChange100ms": {
@@ -108,7 +108,7 @@
                     "thresh_type": "outliers_per_channel",
                     "thresh": [
                         null,
-                        2.0
+                        3
                     ],
                     "time_window": 0.1,
                     "time_window_step": 0.02,
@@ -128,7 +128,7 @@
         "position": 5,
         "min_loops": 0,
         "max_loops": 5,
-        "min_rejection": 0.089,
+        "min_rejection": 0.00023,
         "define_bcbt": true,
         "algorithms": {
             "ArtifactsAmplitudeAvgRef": {
@@ -140,8 +140,8 @@
                     "do_zscore": false,
                     "thresh_type": "outliers_all",
                     "thresh": [
-                        -2,
-                        2
+                        -3,
+                        3
                     ],
                     "mask": 0,
                     "remove_bct": true,
@@ -159,7 +159,7 @@
         "position": 6,
         "min_loops": 0,
         "max_loops": 5,
-        "min_rejection": 0.089,
+        "min_rejection": 0.00012,
         "define_bcbt": true,
         "algorithms": {
             "MaxChange500msAvgRef": {
@@ -172,7 +172,7 @@
                     "thresh_type": "outliers_all",
                     "thresh": [
                         null,
-                        2.0
+                        3
                     ],
                     "time_window": 0.5,
                     "time_window_step": 0.1,
@@ -192,7 +192,7 @@
         "position": 7,
         "min_loops": 0,
         "max_loops": 5,
-        "min_rejection": 0.089,
+        "min_rejection": 0.00012,
         "define_bcbt": true,
         "algorithms": {
             "MaxChange100msAvgRef": {
@@ -205,7 +205,7 @@
                     "thresh_type": "outliers_all",
                     "thresh": [
                         null,
-                        2.0
+                        3
                     ],
                     "time_window": 0.1,
                     "time_window_step": 0.02,

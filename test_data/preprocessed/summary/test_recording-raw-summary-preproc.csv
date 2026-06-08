@@ -1,8 +1,8 @@
 file_id,step,length,%_corrected_data,%_bad_data,%_bad_channels,%_bad_times
-test_recording-raw,artifacts_detection_BadElectrodes,180.0,0.0,2.32,0.8,0.0
-test_recording-raw,artifacts_detection_Glitches,180.0,0.0,16.13,0.8,14.63
-test_recording-raw,artifacts_correction_TargetPCA,180.0,0.93,15.98,0.8,14.63
-test_recording-raw,artifacts_detection_Artifacts,180.0,0.93,35.55,2.4,35.72
-test_recording-raw,artifacts_correction_Segments,180.0,6.12,32.34,2.4,35.23
-test_recording-raw,artifacts_correction_BadChannels,180.0,8.5,30.88,0.0,35.09
-test_recording-raw,artifacts_detection_ArtifactsPostCorrection,180.0,8.5,36.19,0.0,36.56
+test_recording-raw,artifacts_detection_BadElectrodes,180.0,0.0,0.91,0.0,0.0
+test_recording-raw,artifacts_detection_Glitches,180.0,0.0,11.53,0.0,12.21
+test_recording-raw,artifacts_correction_TargetPCA,180.0,1.06,11.35,0.0,12.21
+test_recording-raw,artifacts_detection_Artifacts,180.0,1.06,20.87,0.0,21.19
+test_recording-raw,artifacts_correction_Segments,180.0,4.42,18.59,0.0,20.96
+test_recording-raw,artifacts_correction_BadChannels,180.0,4.42,18.59,0.0,20.96
+test_recording-raw,artifacts_detection_ArtifactsPostCorrection,180.0,4.42,22.63,0.0,23.35

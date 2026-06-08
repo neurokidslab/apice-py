@@ -1,0 +1,19 @@
+{
+    "drop_electrodes": [
+        "E125",
+        "E126",
+        "E127",
+        "E128"
+    ],
+    "picks": "eeg",
+    "crop_times": null,
+    "crop_from_beginning": null,
+    "crop_from_end": null,
+    "resample_freq": null,
+    "stim_channels_to_annotations": false,
+    "montage": null,
+    "head_size": null,
+    "l_freq": 0.1,
+    "h_freq": 40,
+    "line_noise_freq": null
+}
