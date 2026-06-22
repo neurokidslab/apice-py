@@ -1024,43 +1024,82 @@ class EpochsAPICE(mne.EpochsArray):
             the epoch (e.g. ``'artifacts;distance'``).
         """
 
-        artifacts_df = pd.DataFrame(columns=['epoch', 'ch_names', 'description', 'onset', 'duration', 'reason'])
+        rows = []
 
         # BCT
         for ep in np.arange(np.shape(self.artifacts.BCT)[0]):
             for el in np.arange(np.shape(self.artifacts.BCT)[1]):
-                    onset, duration = get_onset_and_duration(self.artifacts.BCT[ep, el, :], self.times)
-                    if len(onset) > 0:
-                        for i in range(len(onset)):
-                            artifacts_df.loc[len(artifacts_df)] = [ep, self.ch_names[el], 'artifact', onset[i], duration[i], None]
+                onset, duration = get_onset_and_duration(self.artifacts.BCT[ep, el, :], self.times)
+                if len(onset) > 0:
+                    for i in range(len(onset)):
+                        rows.append({
+                            'epoch': ep,
+                            'ch_names': self.ch_names[el],
+                            'description': 'artifact',
+                            'onset': onset[i],
+                            'duration': duration[i],
+                            'reason': pd.NA,
+                        })
+
         # BC
         for ep in np.arange(np.shape(self.artifacts.BC)[0]):
             for el in np.arange(np.shape(self.artifacts.BC)[1]):
-                    if self.artifacts.BC[ep, el, 0]:
-                        artifacts_df.loc[len(artifacts_df)] = [ep, self.ch_names[el], 'badchannel', None, None, None]
+                if self.artifacts.BC[ep, el, 0]:
+                    rows.append({
+                        'epoch': ep,
+                        'ch_names': self.ch_names[el],
+                        'description': 'badchannel',
+                        'onset': np.nan,
+                        'duration': np.nan,
+                        'reason': pd.NA,
+                    })
 
         # BE
         for ep in np.arange(np.shape(self.artifacts.BE)[0]):
             if self.artifacts.BE[ep]:
                 reason_str = ';'.join(sorted(self.artifacts.rejection_reasons[ep])) if self.artifacts.rejection_reasons[ep] else ''
-                artifacts_df.loc[len(artifacts_df)] = [ep, None, 'badepoch', None, None, reason_str]
+                rows.append({
+                    'epoch': ep,
+                    'ch_names': pd.NA,
+                    'description': 'badepoch',
+                    'onset': np.nan,
+                    'duration': np.nan,
+                    'reason': reason_str,
+                })
 
         # BT
         for ep in np.arange(np.shape(self.artifacts.BT)[0]):
             onset, duration = get_onset_and_duration(self.artifacts.BT[ep, 0, :], self.times)
             if len(onset) > 0:
                 for i in range(len(onset)):
-                    artifacts_df.loc[len(artifacts_df)] = [ep, None, 'badtime', onset[i], duration[i], None]
+                    rows.append({
+                        'epoch': ep,
+                        'ch_names': pd.NA,
+                        'description': 'badtime',
+                        'onset': onset[i],
+                        'duration': duration[i],
+                        'reason': pd.NA,
+                    })
 
         # CCT
         for ep in np.arange(np.shape(self.artifacts.CCT)[0]):
             for el in np.arange(np.shape(self.artifacts.CCT)[1]):
-                    onset, duration = get_onset_and_duration(self.artifacts.CCT[ep, el, :], self.times)
-                    if len(onset) > 0:
-                        for i in range(len(onset)):
-                            artifacts_df.loc[len(artifacts_df)] = [ep, self.ch_names[el], 'corrected', onset[i], duration[i], None]
+                onset, duration = get_onset_and_duration(self.artifacts.CCT[ep, el, :], self.times)
+                if len(onset) > 0:
+                    for i in range(len(onset)):
+                        rows.append({
+                            'epoch': ep,
+                            'ch_names': self.ch_names[el],
+                            'description': 'corrected',
+                            'onset': onset[i],
+                            'duration': duration[i],
+                            'reason': pd.NA,
+                        })
 
-        return artifacts_df
+        return pd.DataFrame.from_records(
+            rows,
+            columns=['epoch', 'ch_names', 'description', 'onset', 'duration', 'reason'],
+        )
 
     def dataframe_to_rejection_matrix(self, artifacts_df):
         """Populate artifact masks from a dataframe representation.
