@@ -394,21 +394,24 @@ def clean_ica(raw,
     print(f"  eog_bipolar_cathodes: {eog_bipolar_cathodes}")
     print(f"  ecg_channels: {ecg_channels}")           
 
-    # Make a copy of the raw data to filter, mark bad data and then apply ICA on it
-    raw_ica = raw.copy()
+    # # Make a copy of the raw data to filter, mark bad data and then apply ICA on it
+    # raw_ica = raw.copy()
 
     # Detect artifacts to remove them before ICA
     print("\nDetecting artifacts and marking bad data for ICA fitting...")
     print("------------------------------------")
-    raw_ica = RawAPICE(raw_ica, **cfg_bcbt)
-    raw_ica.run_algorithms(cfg_artifacts_detection, l_freq = l_freq_artifacts, h_freq = h_freq_artifacts)
-    raw_ica.define_bcbt()
+    raw_ica_apice = RawAPICE(raw.copy(), **cfg_bcbt)
+    raw_ica_apice.run_algorithms(cfg_artifacts_detection, l_freq = l_freq_artifacts, h_freq = h_freq_artifacts)
+    raw_ica_apice.define_bcbt()
 
     # Mark bad data before ICA so that it is not used for ICA decomposition
-    raw_ica.annotate_bads(channels=True, times=True, data=False, corrected=False)
+    raw_ica_apice.annotate_bads(channels=True, times=True, data=False, corrected=False)
 
     # Filter
-    Filter(raw_ica, l_freq=l_freq_ica, h_freq=h_freq_ica) 
+    Filter(raw_ica_apice, l_freq=l_freq_ica, h_freq=h_freq_ica) 
+
+    # Get the raw data in mne format for ICA fitting
+    raw_ica = raw_ica_apice.to_mne_raw()
 
     # Get the picks for ICA fitting
     if picks_ica is None:
@@ -429,7 +432,7 @@ def clean_ica(raw,
     # Create a figure to visualize the artifact structure
     if report is not None:
         try:
-            fig = raw_ica.plot_artifact_structure(color_scheme='jet')    
+            fig = raw_ica_apice.plot_artifact_structure(color_scheme='jet')    
             report.add_figure(fig, "Artifacts Matrix", section="Raw Data ICA", replace=True)
             plt.close(fig)
         except Exception as e:
@@ -438,7 +441,7 @@ def clean_ica(raw,
     # Add topomap of bad electrodes
     if report is not None:
         try:
-            fig = raw_ica.plot_percentage_of_bad_data_across_sensors()
+            fig = raw_ica_apice.plot_percentage_of_bad_data_across_sensors()
             report.add_figure(fig, "Bad data across electrodes", section="Raw Data ICA", replace=True)
             plt.close(fig)
         except Exception as e:
@@ -450,7 +453,7 @@ def clean_ica(raw,
     
     # define the number of n_components
     if n_components == 'auto':
-        n_samples = (raw_ica.artifacts.BT == False).sum()  # number of samples not marked as bad for ICA fitting
+        n_samples = (raw_ica_apice.artifacts.BT == False).sum()  # number of samples not marked as bad for ICA fitting
         n_channels = len(picks_ica)
         n_components_auto = min(n_channels, int((n_samples / 30) ** 0.5))  # n_samples ≥ 30 x n_channels^2 => n_channels ≤ sqrt(n_samples / 30)
         print(f"Automatically setting n_components to {n_components_auto} based on the number of samples and channels.")
