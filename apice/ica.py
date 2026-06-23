@@ -158,6 +158,7 @@ def clean_ica(raw,
               label_components_method='iclabel',
               iclabel_lim_probability=0.9,
               iclabel_labels_to_exclude = ['eye blink', 'muscle artifact', 'heart beat', 'line noise', 'channel noise'],
+              iclabel_set_average_reference=True,
               eog_channels=None,
               eog_bipolar_anodes=None,
               eog_bipolar_cathodes=None,
@@ -250,6 +251,8 @@ def clean_ica(raw,
         List of ICLabel labels to exclude (only used when ``label_components_method='iclabel'``).
         Default is ['eye blink', 'muscle artifact', 'heart beat', 'line noise'].
         Possible labels include: 'eye blink', 'muscle artifact', 'heart beat', 'line noise', 'channel noise', 'other'.
+    iclabel_set_average_reference : bool
+        If True, the ICA fitting copy of the data is set to average reference before calling ICLabel (only used when ``label_components_method='iclabel'``).
     eog_channels : list of str or None
         Existing channel names to use as EOG proxies with find_bads_eog
         (only used when ``label_components_method='correlation'``).
@@ -394,13 +397,11 @@ def clean_ica(raw,
     print(f"  eog_bipolar_cathodes: {eog_bipolar_cathodes}")
     print(f"  ecg_channels: {ecg_channels}")           
 
-    # # Make a copy of the raw data to filter, mark bad data and then apply ICA on it
-    # raw_ica = raw.copy()
-
     # Detect artifacts to remove them before ICA
     print("\nDetecting artifacts and marking bad data for ICA fitting...")
     print("------------------------------------")
-    raw_ica_apice = RawAPICE(raw.copy(), **cfg_bcbt)
+    raw_ica_apice = raw.copy()
+    raw_ica_apice = RawAPICE(raw_ica_apice, **cfg_bcbt)
     raw_ica_apice.run_algorithms(cfg_artifacts_detection, l_freq = l_freq_artifacts, h_freq = h_freq_artifacts)
     raw_ica_apice.define_bcbt()
 
@@ -460,8 +461,8 @@ def clean_ica(raw,
         n_components = n_components_auto
 
     if label_components_method == 'iclabel':
-        # ICLabel requires an average reference, so we set it here for ICA fitting
-        raw_ica.set_eeg_reference("average")
+        if iclabel_set_average_reference: # ICLabel requires an average reference, so we set it here for ICA fitting
+            raw_ica.set_eeg_reference("average")
         ica = ICA(n_components=n_components, random_state=random_state, noise_cov=noise_cov, max_iter=max_iterint, method=method, fit_params=fit_params)
         ica.fit(raw_ica, 
             start=start_fit, stop=stop_fit, 
@@ -502,8 +503,9 @@ def clean_ica(raw,
             print(f"  Component {i} with label {ic_labels['labels'][i]}")
 
     # Remove the bad components from the original raw data
-    raw_clean = raw.copy()
+    # raw_clean = raw.copy()
     # ica.apply(raw_clean, include=None, exclude = components_to_exclude, n_pca_components=None)
+    raw_clean = raw.copy()
     artifacts = raw.copy()
     ica.apply(artifacts, include=components_to_exclude, exclude = [], n_pca_components=None)
     raw_clean._data = raw._data - artifacts._data
