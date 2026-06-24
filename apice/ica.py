@@ -334,9 +334,9 @@ def clean_ica(raw,
     if file_name is None and (save_ica or save_report or save_cfg or save_data):
         raise ValueError("file_name must be provided if any of the saving options is True, to use as part of the file name for the saved files")
 
-    # Check that file_name ends with 'ica', '_ica', '-ica'. If it does not, add '_ica' to the end of the file name to indicate that this is the result of ICA cleaning.  
-    if file_name is not None and not (file_name.endswith('ica') or file_name.endswith('_ica') or file_name.endswith('-ica')):
-        file_name = file_name + '_ica'
+    # # Check that file_name ends with 'ica', '_ica', '-ica'. If it does not, add '_ica' to the end of the file name to indicate that this is the result of ICA cleaning.  
+    # if file_name is not None and not (file_name.endswith('ica') or file_name.endswith('_ica') or file_name.endswith('-ica')):
+    #     file_name = file_name + '_ica'
 
     # Create output folder if it does not exist
     if output_dir is not None:
@@ -583,7 +583,7 @@ def clean_ica(raw,
     if save_data:
         raw_clean.save(output_dir / f"{file_name}-raw.fif", overwrite=True)
     if save_ica:
-        ica.save(output_dir_ica / f"{file_name}-decomposition.fif", overwrite=True)
+        ica.save(output_dir_ica / f"{file_name}-ica.fif", overwrite=True)
     if _owns_report and save_report:
         report.save(output_dir_reports / f"{file_name}-report.html", overwrite=True, open_browser=False)
     if save_cfg:
