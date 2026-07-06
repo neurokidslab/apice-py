@@ -1451,7 +1451,7 @@ def segment_default_pipeline(raw,
     # Add evokeds in the report
     if report is not None:
         if evoked_by is None:
-            evokeds_to_add = []
+            evokeds_to_add = {}
         elif evoked_by == "all":
             evokeds_to_add = dict(all=evokeds)
         else:                
