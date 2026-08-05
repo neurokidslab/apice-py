@@ -516,36 +516,228 @@ def annotations_to_rejection_matrix(raw) -> None:
         for el, start, end in zip(channel_indices, onset_indices, end_indices):
             raw.artifacts.CCT[ep, el, start:end] = True 
 
-def plot_percentage_of_bad_data_across_sensors(raw):
-    # Get the percentage of bad data per electrodes
-    data = []
+def annotations_to_rejection_matrix(raw) -> None:
+    """
+    Converts annotations in an EEG raw data structure to a rejection matrix format.
+
+    Parameters:
+    - raw: BaseRaw
+        The raw EEG data structure with annotations that need to be converted.
+
+    Notes:
+    - This function modifies the raw object in place, adding artifacts rejection information
+        for bad channels, bad times, bad data, and corrected data as specified by annotations.
+    - The annotations are expected to be in a specific format with a description field indicating
+        the type of artifact (bad channel, bad time, artifact, corrected).
+    """
+
+    print("Converting annotations to artifacts matrix")
     
-    for ch_idx, ch_name in enumerate(raw.ch_names):
-        channel_bct = raw.artifacts.BCT[:, ch_idx, :]
+    # Extract annotations using the provided helper function
+    annotations = extract_annotations(raw)
 
-        bad_percentage = (
-            np.count_nonzero(channel_bct) / channel_bct.size
-        ) * 100
+    # Get time vector and channel list from the raw data structure
+    t = raw.times
+    ch_names = np.asarray(raw.ch_names)
 
-        data.append(bad_percentage)
-    
-    # Create a figure explicitly
-    fig, ax = plt.subplots()
-    
-    # Plot the topomap
-    im, _ = mne.viz.plot_topomap(data, raw.info, 
-                        ch_type='eeg', 
-                        names=raw.ch_names, 
-                        size=4, 
-                        cmap='viridis',
-                        axes=ax,
-                        show=False)
+    # Get data size information from the custom Raw object
+    n_electrodes, n_samples, n_epochs = apice.io.Raw.get_data_size(raw)
 
-    # Add a colorbar
-    cbar = plt.colorbar(im, ax=ax)
-    cbar.set_label('Percentage of bad data (%)')  # More descriptive label
+    # Create a rejection matrix for bad channels (BC)
+    # Get indices of bad channels and ensure they are integers
+    bad_channel_indices = np.array([np.where(ch_names == el)[0] for el in raw.info['bads']], dtype=int).flatten()
 
-    # Return the figure instead of the image
+    # Apply the bad channel mask efficiently
+    raw.artifacts.BC[:, bad_channel_indices, :] = True
+
+    # Create a rejection matrix for bad times (BT)
+    bad_time = annotations[annotations['Description'] == 'badtime'].reset_index(drop=True)
+
+    # Vectorize search for nearest indices
+    onset_indices = np.searchsorted(t, bad_time['Onset'])
+    end_indices = np.searchsorted(t, bad_time['Onset'] + bad_time['Duration'])
+
+    # Efficiently apply the artifacts mask
+    for start, end in zip(onset_indices, end_indices):
+        raw.artifacts.BT[:, :, start:end] = True
+
+    # Create a rejection matrix for bad data (BCT)
+    bad_data = annotations[annotations['Description'] == 'artifact'].reset_index(drop=True)
+
+    # Vectorized search for nearest indices
+    onset_indices = np.searchsorted(t, bad_data['Onset'])
+    end_indices = np.searchsorted(t, bad_data['Onset'] + bad_data['Duration'])
+
+    # Precompute channel indices
+    channel_indices = np.array([np.where(ch_names == ch)[0][0] for ch in bad_data['Channel']])
+
+    # Efficiently apply the artifacts mask
+    for ep in range(n_epochs):
+        for el, start, end in zip(channel_indices, onset_indices, end_indices):
+            raw.artifacts.BCT[ep, el, start:end] = True  
+
+    # Create a rejection matrix for corrected data (CCT)
+    corrected_data = annotations[annotations['Description'] == 'corrected'].reset_index(drop=True)
+
+    # Initialize CCT matrix if it doesn't exist
+    if not hasattr(raw.artifacts, 'CCT'):
+        raw.artifacts.CCT = np.full((n_epochs, n_electrodes, n_samples), False)
+
+    # Vectorized search for nearest indices
+    onset_indices = np.searchsorted(t, corrected_data['Onset'])
+    end_indices = np.searchsorted(t, corrected_data['Onset'] + corrected_data['Duration'])
+
+    # Precompute channel indices
+    channel_indices = np.array([np.where(ch_names == ch)[0][0] for ch in corrected_data['Channel']])
+
+    # Efficiently apply the corrected artifacts mask
+    for ep in range(n_epochs):
+        for el, start, end in zip(channel_indices, onset_indices, end_indices):
+            raw.artifacts.CCT[ep, el, start:end] = True 
+
+def plot_percentage_of_bad_data_across_sensors(inst):
+    """
+    Plot the percentage of bad samples for each EEG sensor.
+
+    Supported BCT shapes
+    --------------------
+    Continuous:
+        (n_channels, n_times)
+
+    Epochs:
+        (n_epochs, n_channels, n_times)
+
+    Parameters
+    ----------
+    inst : mne.io.Raw or mne.Epochs
+        Object containing ``inst.artifacts.BCT``.
+
+    Returns
+    -------
+    fig : matplotlib.figure.Figure
+        Topographic plot.
+    """
+    import numpy as np
+    import matplotlib.pyplot as plt
+    import mne
+
+    bct = np.asarray(inst.artifacts.BCT)
+    n_channels = len(inst.ch_names)
+
+    print(f"BCT shape: {bct.shape}")
+    print(f"Number of channels: {n_channels}")
+
+    # ---------------------------------------------------------
+    # Continuous data: channels × time
+    # ---------------------------------------------------------
+    if bct.ndim == 2:
+        if bct.shape[0] == n_channels:
+            bct_by_channel = bct
+
+        elif bct.shape[1] == n_channels:
+            bct_by_channel = bct.T
+
+        else:
+            raise ValueError(
+                f"For continuous data, expected BCT shape "
+                f"(n_channels, n_times) or (n_times, n_channels), "
+                f"but received {bct.shape}."
+            )
+
+    # ---------------------------------------------------------
+    # Epoched data: epochs × channels × time
+    # ---------------------------------------------------------
+    elif bct.ndim == 3:
+        if bct.shape[1] == n_channels:
+            # epochs × channels × time
+            bct_by_channel = np.transpose(
+                bct,
+                (1, 0, 2),
+            ).reshape(n_channels, -1)
+
+        elif bct.shape[0] == n_channels:
+            # channels × epochs × time
+            bct_by_channel = bct.reshape(n_channels, -1)
+
+        elif bct.shape[2] == n_channels:
+            # epochs × time × channels
+            bct_by_channel = np.transpose(
+                bct,
+                (2, 0, 1),
+            ).reshape(n_channels, -1)
+
+        else:
+            raise ValueError(
+                f"For epoched data, no BCT dimension matches "
+                f"the number of channels. BCT shape: {bct.shape}."
+            )
+
+    else:
+        raise ValueError(
+            f"Unsupported BCT shape: {bct.shape}. "
+            f"Expected a 2D continuous or 3D epoched BCT."
+        )
+
+    # Treat only positive finite values as bad
+    bad_mask = np.isfinite(bct_by_channel) & (bct_by_channel > 0)
+
+    bad_percentage_all_channels = (
+        bad_mask.sum(axis=1) / bad_mask.shape[1]
+    ) * 100
+
+    # Print diagnostics
+    print(
+        f"Total observations per channel: "
+        f"{bad_mask.shape[1]}"
+    )
+    print(
+        f"Bad percentage range: "
+        f"{bad_percentage_all_channels.min():.2f}%–"
+        f"{bad_percentage_all_channels.max():.2f}%"
+    )
+
+    # EEG channels only
+    eeg_picks = mne.pick_types(
+        inst.info,
+        eeg=True,
+        meg=False,
+        eog=False,
+        ecg=False,
+        stim=False,
+        exclude=[],
+    )
+
+    if len(eeg_picks) == 0:
+        raise ValueError("No EEG channels were found.")
+
+    eeg_info = mne.pick_info(
+        inst.info,
+        eeg_picks,
+        copy=True,
+    )
+
+    eeg_bad_percentage = bad_percentage_all_channels[eeg_picks]
+    eeg_names = [inst.ch_names[pick] for pick in eeg_picks]
+
+    fig, ax = plt.subplots(figsize=(6, 5))
+
+    im, _ = mne.viz.plot_topomap(
+        eeg_bad_percentage,
+        eeg_info,
+        ch_type="eeg",
+        names=eeg_names,
+        cmap="viridis",
+        axes=ax,
+        show=False,
+    )
+
+    ax.set_title("Percentage of bad data across EEG sensors")
+
+    cbar = fig.colorbar(im, ax=ax)
+    cbar.set_label("Percentage of bad data (%)")
+
+    fig.tight_layout()
+
     return fig
 
 
