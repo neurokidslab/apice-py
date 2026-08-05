@@ -519,10 +519,15 @@ def annotations_to_rejection_matrix(raw) -> None:
 def plot_percentage_of_bad_data_across_sensors(raw):
     # Get the percentage of bad data per electrodes
     data = []
-    for i, ch in enumerate(raw.ch_names):
-        n_bads = np.sum(raw.artifacts.BCT[:, i, :])
-        n_per = (n_bads / np.shape(raw.artifacts.BCT[:, i, :])[1]) * 100
-        data.append(n_per)
+    
+    for ch_idx, ch_name in enumerate(raw.ch_names):
+        channel_bct = raw.artifacts.BCT[:, ch_idx, :]
+
+        bad_percentage = (
+            np.count_nonzero(channel_bct) / channel_bct.size
+        ) * 100
+
+        data.append(bad_percentage)
     
     # Create a figure explicitly
     fig, ax = plt.subplots()
